@@ -15,7 +15,7 @@ export function Editor({ body, onChange }: Props) {
         {mode === 'edit' ? 'プレビュー' : '編集'}
       </button>
       {mode === 'edit' ? (
-        <textarea value={body} onChange={(e) => onChange(e.target.value)} />
+        <textarea aria-label="本文" value={body} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <div className="preview">
           <ReactMarkdown>{body}</ReactMarkdown>

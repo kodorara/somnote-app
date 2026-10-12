@@ -1,9 +1,10 @@
-import FlexSearch from 'flexsearch'
+import FlexSearch, { type DocumentValue } from 'flexsearch'
 
 export interface SearchableNote {
   id: string
   title: string
   body: string
+  [key: string]: DocumentValue | DocumentValue[]
 }
 
 export function buildIndex(notes: SearchableNote[]) {
