@@ -12,14 +12,14 @@ export function ConflictResolver({ localBody, remoteBody, onResolve }: Props) {
         <div>
           <h4>ローカル版</h4>
           <p>{localBody}</p>
-          <button type="button" onClick={() => onResolve('local')}>
+          <button type="button" className="btn btn-primary" onClick={() => onResolve('local')}>
             ローカル版を残す
           </button>
         </div>
         <div>
           <h4>リモート版</h4>
           <p>{remoteBody}</p>
-          <button type="button" onClick={() => onResolve('remote')}>
+          <button type="button" className="btn btn-primary" onClick={() => onResolve('remote')}>
             リモート版を残す
           </button>
         </div>

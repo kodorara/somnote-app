@@ -1,7 +1,207 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  background: var(--color-bg);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.sync-progress,
+.sync-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-6);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.sync-error { color: var(--color-accent-400); }
+
 .columns {
   display: flex;
-  gap: 1rem;
+  flex: 1;
+  min-height: 0;
 }
+
+.col-folders {
+  flex: 0 0 220px;
+  border-right: 1px solid var(--color-divider);
+  overflow-y: auto;
+}
+.col-notes {
+  flex: 0 0 280px;
+  border-right: 1px solid var(--color-divider);
+  overflow-y: auto;
+}
+.col-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6);
+  gap: var(--space-3);
+}
+
+/* — folder list — */
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) 0;
+}
+.folder-list li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 3px solid transparent;
+  padding: 10px var(--space-4);
+  font-size: 13.5px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.folder-list li button:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.folder-list li button[aria-current='true'] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent-100);
+}
+
+/* — note list controls (sort / tag / word filter) — */
+.note-list-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+.note-list-controls select.input { min-height: 32px; padding: 4px 8px; font-size: 12.5px; }
+.note-list-controls .tag-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* — note list — */
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+.note-list li button {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 5%, transparent);
+  padding: 11px var(--space-4);
+  cursor: pointer;
+  color: var(--color-text);
+}
+.note-list li button:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.note-list li button[aria-current='true'] {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.note-list .note-title { font-size: 14px; line-height: 1.45; }
+.note-list .note-meta { font-size: 11px; color: var(--color-text-muted); }
+
+/* — editor — */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+.editor-toolbar { display: flex; justify-content: flex-end; }
+.editor textarea {
+  flex: 1;
+  min-height: 300px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.75;
+  padding: 0;
+}
+.editor .preview {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.editor .preview h1 { font-size: 21px; margin: var(--space-3) 0; }
+.editor .preview h2 { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-400); margin: var(--space-3) 0; }
+
+/* — sync status / conflict — */
+.sync-status-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+.conflict-resolver {
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-divider);
+}
+.conflict-resolver .split {
+  display: flex;
+  gap: var(--space-4);
+}
+.conflict-resolver .split > div {
+  flex: 1;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+/* — llm link panel — */
+.llm-link-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+.llm-buttons { display: flex; gap: var(--space-2); }
+.add-link-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.add-link-form label { font-size: 11px; color: var(--color-text-muted); }
+.add-link-form input { width: auto; flex: 1; min-width: 120px; }
+
+/* — settings — */
+.settings {
+  max-width: 420px;
+  margin: var(--space-8) auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+.settings label { font-size: 12px; color: var(--color-text-muted); margin-top: var(--space-2); }
 
 @media (max-width: 768px) {
   .columns {
@@ -14,7 +214,9 @@
   .col-editor {
     position: absolute;
     inset: 0;
+    flex-basis: auto;
     transition: transform 0.2s;
+    background: var(--color-bg);
   }
   .mobile-folders .col-notes,
   .mobile-folders .col-editor {

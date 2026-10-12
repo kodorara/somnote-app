@@ -7,7 +7,8 @@ import { fullSync } from './lib/fullSync'
 import * as githubClient from './lib/github'
 import type { ConflictItem } from './lib/sync'
 import { FolderList } from './components/FolderList'
-import { NoteList } from './components/NoteList'
+import { NoteList, type SortBy } from './components/NoteList'
+import { NoteListControls } from './components/NoteListControls'
 import { Editor } from './components/Editor'
 import { SearchBar } from './components/SearchBar'
 import { LlmLinkPanel } from './components/LlmLinkPanel'
@@ -33,6 +34,9 @@ export default function App() {
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<SortBy>('seq')
+  const [wordFilter, setWordFilter] = useState('')
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
 
   useEffect(() => {
@@ -142,6 +146,15 @@ export default function App() {
     return notes.filter((n) => idSet.has(n.id))
   }, [notes, searchResultIds])
 
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    for (const n of notes) {
+      if (n.deleted) continue
+      for (const t of n.tags) tagSet.add(t)
+    }
+    return Array.from(tagSet).sort()
+  }, [notes])
+
   const handleSyncNow = async () => {
     if (!settings || syncInFlightRef.current) return
     syncInFlightRef.current = true
@@ -189,8 +202,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <SearchBar onQueryChange={runSearch} />
-      <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
+      <div className="topbar">
+        <SearchBar onQueryChange={runSearch} />
+        <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
+      </div>
       {syncProgress && (
         <p className="sync-progress">
           同期中... {syncProgress.done}/{syncProgress.total}件
@@ -213,15 +228,28 @@ export default function App() {
               await leaveEditor()
               setSelectedFolder(name)
               setNotes(await db.notes.where('folder').equals(name).toArray())
+              setWordFilter('')
+              setTagFilter(null)
               setMobileScreen('notes')
             }}
           />
         </div>
         <div className="col-notes">
+          <NoteListControls
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            wordFilter={wordFilter}
+            onWordFilterChange={setWordFilter}
+            availableTags={availableTags}
+            tagFilter={tagFilter}
+            onTagFilterChange={setTagFilter}
+          />
           <NoteList
             notes={visibleNotes}
             selectedId={activeNote?.id ?? null}
-            tagFilter={null}
+            tagFilter={tagFilter}
+            wordFilter={wordFilter}
+            sortBy={sortBy}
             onSelect={async (id) => {
               await leaveEditor()
               const n = await db.notes.get(id)
@@ -234,7 +262,7 @@ export default function App() {
           {activeNote && (
             <>
               <Editor body={activeNote.body} onChange={updateBody} />
-              <button type="button" onClick={deleteActiveNote}>
+              <button type="button" className="btn" onClick={deleteActiveNote}>
                 ゴミ箱に移動
               </button>
               <LlmLinkPanel

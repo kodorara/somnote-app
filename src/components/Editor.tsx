@@ -11,9 +11,11 @@ export function Editor({ body, onChange }: Props) {
 
   return (
     <div className="editor">
-      <button type="button" onClick={() => setMode(mode === 'edit' ? 'preview' : 'edit')}>
-        {mode === 'edit' ? 'プレビュー' : '編集'}
-      </button>
+      <div className="editor-toolbar">
+        <button type="button" className="btn btn-ghost" onClick={() => setMode(mode === 'edit' ? 'preview' : 'edit')}>
+          {mode === 'edit' ? 'プレビュー' : '編集'}
+        </button>
+      </div>
       {mode === 'edit' ? (
         <textarea aria-label="本文" value={body} onChange={(e) => onChange(e.target.value)} />
       ) : (

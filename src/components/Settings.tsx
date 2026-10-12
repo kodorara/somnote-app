@@ -14,12 +14,12 @@ export function Settings({ initial, onSave }: Props) {
   return (
     <div className="settings">
       <label htmlFor="pat">Personal Access Token</label>
-      <input id="pat" type="password" value={token} onChange={(e) => setToken(e.target.value)} />
+      <input className="input" id="pat" type="password" value={token} onChange={(e) => setToken(e.target.value)} />
       <label htmlFor="owner">GitHubユーザー名</label>
-      <input id="owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
+      <input className="input" id="owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
       <label htmlFor="repo">データリポジトリ名</label>
-      <input id="repo" value={repo} onChange={(e) => setRepo(e.target.value)} />
-      <button type="button" onClick={() => onSave({ token, owner, repo })}>
+      <input className="input" id="repo" value={repo} onChange={(e) => setRepo(e.target.value)} />
+      <button type="button" className="btn btn-primary" onClick={() => onSave({ token, owner, repo })}>
         保存
       </button>
     </div>

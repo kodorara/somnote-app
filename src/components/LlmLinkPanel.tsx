@@ -26,7 +26,7 @@ export function LlmLinkPanel({ body, links, onAddLink }: Props) {
     <div className="llm-link-panel">
       <div className="llm-buttons">
         {LLM_TARGETS.map((t) => (
-          <button type="button" key={t.name} onClick={() => sendTo(t)}>
+          <button type="button" className="btn" key={t.name} onClick={() => sendTo(t)}>
             {t.name}へ
           </button>
         ))}
@@ -40,11 +40,12 @@ export function LlmLinkPanel({ body, links, onAddLink }: Props) {
       </ul>
       <div className="add-link-form">
         <label htmlFor="llm-url">チャットURL</label>
-        <input id="llm-url" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <input className="input" id="llm-url" value={url} onChange={(e) => setUrl(e.target.value)} />
         <label htmlFor="llm-label">ラベル</label>
-        <input id="llm-label" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input className="input" id="llm-label" value={label} onChange={(e) => setLabel(e.target.value)} />
         <button
           type="button"
+          className="btn"
           onClick={() => {
             onAddLink(url, label)
             setUrl('')

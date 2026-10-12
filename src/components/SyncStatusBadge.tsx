@@ -9,7 +9,7 @@ export function SyncStatusBadge({ online, pendingCount, onSyncNow }: Props) {
     <div className="sync-status-badge">
       <span>{online ? 'オンライン' : 'オフライン'}</span>
       {pendingCount > 0 && <span>未同期 {pendingCount}件</span>}
-      <button type="button" onClick={onSyncNow}>
+      <button type="button" className="btn btn-ghost" onClick={onSyncNow}>
         今すぐ同期
       </button>
     </div>

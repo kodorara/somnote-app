@@ -7,6 +7,7 @@ export function SearchBar({ onQueryChange }: Props) {
     <input
       type="search"
       role="searchbox"
+      className="input"
       placeholder="検索(タイトル・本文・タグ)"
       onChange={(e) => onQueryChange(e.target.value)}
     />
