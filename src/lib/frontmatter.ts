@@ -1,14 +1,19 @@
-import matter from 'gray-matter'
 import { load, dump, JSON_SCHEMA } from 'js-yaml'
 
+// gray-matterはNode.jsのBufferに依存しており、ブラウザ(本アプリの実行環境)では
+// "ReferenceError: Buffer is not defined" で例外を投げる。Vitestのテストは
+// Node環境で動くためこの依存漏れを検出できなかった。frontmatterの形式はこちらで
+// 完全に把握している固定フォーマット(---\nYAML\n---\n本文)なので、
+// gray-matterを使わずjs-yamlだけで split/join する。
+//
 // デフォルトのYAMLエンジン(js-yamlのDEFAULT_SCHEMA)は、クォートされていない
 // "2015-09-19T10:10:35+09:00" のような文字列を自動的にDateオブジェクトへ変換してしまう。
 // ユーザーや他ツールが将来frontmatterを手で編集する可能性があるため(設計書0章の前提)、
 // timestampの暗黙解釈を行わないJSON_SCHEMAに固定する。
-const YAML_ENGINE = {
-  parse: (s: string) => load(s, { schema: JSON_SCHEMA }) as object,
-  stringify: (data: object) => dump(data, { schema: JSON_SCHEMA }),
-}
+const YAML_OPTIONS = { schema: JSON_SCHEMA }
+
+const OPEN_DELIMITER = '---\n'
+const CLOSE_DELIMITER = '\n---\n'
 
 export interface LlmLink {
   url: string
@@ -48,8 +53,17 @@ interface RawFrontmatter {
 }
 
 export function parseNote(raw: string): Note {
-  const { data, content } = matter(raw, { engines: { yaml: YAML_ENGINE } })
-  const fm = data as RawFrontmatter
+  if (!raw.startsWith(OPEN_DELIMITER)) {
+    throw new Error('invalid note format: missing opening frontmatter delimiter')
+  }
+  const closeIndex = raw.indexOf(CLOSE_DELIMITER, OPEN_DELIMITER.length)
+  if (closeIndex === -1) {
+    throw new Error('invalid note format: missing closing frontmatter delimiter')
+  }
+  const yamlText = raw.slice(OPEN_DELIMITER.length, closeIndex)
+  const body = raw.slice(closeIndex + CLOSE_DELIMITER.length)
+
+  const fm = load(yamlText, YAML_OPTIONS) as RawFrontmatter
   return {
     id: fm.id,
     title: fm.title,
@@ -64,7 +78,7 @@ export function parseNote(raw: string): Note {
       label: l.label,
       addedAt: l.added_at,
     })),
-    body: content,
+    body,
   }
 }
 
@@ -80,5 +94,6 @@ export function serializeNote(note: Note): string {
     deleted: note.deleted,
     llm_links: note.llmLinks.map((l) => ({ url: l.url, label: l.label, added_at: l.addedAt })),
   }
-  return matter.stringify(note.body, data, { engines: { yaml: YAML_ENGINE } })
+  const yamlText = dump(data, YAML_OPTIONS)
+  return `${OPEN_DELIMITER}${yamlText}---\n${note.body}`
 }
