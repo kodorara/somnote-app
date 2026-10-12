@@ -101,6 +101,27 @@ describe('runSync', () => {
     expect(created?.baseSha).toBe('shaX')
   })
 
+  it('pulls notes concurrently in batches and reports progress, covering more than one batch', async () => {
+    const remoteRawFor = (id: string) =>
+      `---\nid: ${id}\ntitle: t-${id}\nfolder: f\nseq: 0\ntags: []\ncreated_at: ''\nupdated_at: ''\ndeleted: false\nllm_links: []\n---\n本文${id}\n`
+    const remoteTree = Array.from({ length: 25 }, (_, i) => ({ path: `notes/f/n${i}.md`, sha: `sha${i}` }))
+    const github = {
+      putContent: vi.fn(),
+      getContent: vi.fn().mockImplementation(async (_folder: string, id: string) => ({
+        sha: `sha-of-${id}`,
+        content: remoteRawFor(id),
+      })),
+    }
+    const progressCalls: Array<[number, number]> = []
+    const result = await runSync([], remoteTree, github, (done, total) => progressCalls.push([done, total]))
+
+    expect(result.updated).toHaveLength(25)
+    expect(github.getContent).toHaveBeenCalledTimes(25)
+    // 25件は並列度12のバッチで3回に分かれる(12,12,1)ため、進捗コールバックも複数回呼ばれる
+    expect(progressCalls.length).toBeGreaterThan(1)
+    expect(progressCalls[progressCalls.length - 1]).toEqual([25, 25])
+  })
+
   it('reassigns seq within a folder by createdAt ascending after sync', async () => {
     const localNotes = [
       note({ id: 'a', folder: 'f', createdAt: '2026-01-02T00:00:00+09:00', seq: 5 }),

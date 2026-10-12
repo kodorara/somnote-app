@@ -20,6 +20,7 @@ function notePathOf(folder: string, id: string): string {
 export async function fullSync(
   settings: GithubSettings,
   github: FullSyncGithub,
+  onPullProgress?: (done: number, total: number) => void,
 ): Promise<{ pushed: number; pulled: number; conflicts: ConflictItem[] }> {
   const { owner, repo, token } = settings
   const { tree } = await github.getTree(owner, repo, 'main', token)
@@ -43,7 +44,7 @@ export async function fullSync(
 
   // ローカルが空の初回起動でも、2回目以降の通常同期でも同じ経路を通る
   // (空の場合は全件が「ローカルに無い新規リモートノート」として自然にtoPullに入る)
-  const { updated, conflicts: conflictIds, plan } = await runSync(localNotes, tree, githubAdapter)
+  const { updated, conflicts: conflictIds, plan } = await runSync(localNotes, tree, githubAdapter, onPullProgress)
 
   const conflicts: ConflictItem[] = []
   for (const id of conflictIds) {

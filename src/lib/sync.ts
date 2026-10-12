@@ -75,14 +75,27 @@ export interface GithubLike {
   getContent: (folder: string, id: string) => Promise<{ sha: string; content: string }>
 }
 
+// 読み取り(GET)はGitHubのセカンダリレート制限(書き込み系のみ対象)の影響を受けないため、
+// 初回全件インポートのような大量pullを現実的な時間で終えるには並列化が要る。
+// 逐次1件ずつだと5,000件超で数十分かかり、UI上「固まっている」ように見えてしまう。
+const PULL_CONCURRENCY = 12
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
 export async function runSync(
   localNotes: StoredNote[],
   remoteTree: Pick<TreeEntry, 'path' | 'sha'>[],
   github: GithubLike,
+  onPullProgress?: (done: number, total: number) => void,
 ): Promise<{ updated: StoredNote[]; conflicts: string[]; plan: SyncPlan }> {
   const plan = planSync(localNotes, remoteTree)
   const byId = new Map(localNotes.map((n) => [n.id, { ...n }]))
 
+  // push(書き込み)は設計書3.3節の方針通り逐次実行する
   for (const id of plan.toPush) {
     const n = byId.get(id)
     if (!n) continue
@@ -92,16 +105,24 @@ export async function runSync(
     n.baseSha = res.content.sha
   }
 
-  for (const target of plan.toPull) {
-    const res = await github.getContent(target.folder, target.id)
-    const parsed = parseNote(res.content)
-    const existing = byId.get(target.id)
-    byId.set(target.id, {
-      ...(existing ?? {}),
-      ...parsed,
-      baseSha: res.sha,
-      dirty: false,
-    } as StoredNote)
+  // pull(読み取り)は並列バッチで処理する
+  let pulled = 0
+  for (const batch of chunk(plan.toPull, PULL_CONCURRENCY)) {
+    await Promise.all(
+      batch.map(async (target) => {
+        const res = await github.getContent(target.folder, target.id)
+        const parsed = parseNote(res.content)
+        const existing = byId.get(target.id)
+        byId.set(target.id, {
+          ...(existing ?? {}),
+          ...parsed,
+          baseSha: res.sha,
+          dirty: false,
+        } as StoredNote)
+      }),
+    )
+    pulled += batch.length
+    onPullProgress?.(pulled, plan.toPull.length)
   }
 
   // フォルダ内 seq を createdAt 昇順で振り直す(3.2節Step 8)

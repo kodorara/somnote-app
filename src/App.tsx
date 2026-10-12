@@ -31,6 +31,7 @@ export default function App() {
   const [conflicts, setConflicts] = useState<ConflictItem[]>([])
   const [, setSearchQuery] = useState('')
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const syncInFlightRef = useRef(false)
 
   useEffect(() => {
@@ -68,8 +69,9 @@ export default function App() {
       syncInFlightRef.current = true
       try {
         if (navigator.onLine) {
-          const result = await fullSync(settings, githubClient)
+          const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
           setConflicts(result.conflicts)
+          setSyncProgress(null)
         }
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
@@ -132,10 +134,16 @@ export default function App() {
   }, [notes, searchResultIds])
 
   const handleSyncNow = async () => {
-    if (!settings) return
-    const result = await fullSync(settings, githubClient)
-    setConflicts(result.conflicts)
-    await refreshPendingCount()
+    if (!settings || syncInFlightRef.current) return
+    syncInFlightRef.current = true
+    try {
+      const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+      setConflicts(result.conflicts)
+      setSyncProgress(null)
+      await refreshPendingCount()
+    } finally {
+      syncInFlightRef.current = false
+    }
   }
 
   const resolveConflict = async (conflict: ConflictItem, choice: 'local' | 'remote') => {
@@ -171,6 +179,11 @@ export default function App() {
     <div className="app">
       <SearchBar onQueryChange={runSearch} />
       <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
+      {syncProgress && (
+        <p className="sync-progress">
+          同期中... {syncProgress.done}/{syncProgress.total}件
+        </p>
+      )}
       {conflicts.length > 0 && (
         <ConflictResolver
           localBody={conflicts[0].localBody}
