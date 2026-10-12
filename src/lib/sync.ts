@@ -90,7 +90,10 @@ export async function runSync(
   localNotes: StoredNote[],
   remoteTree: Pick<TreeEntry, 'path' | 'sha'>[],
   github: GithubLike,
-  onPullProgress?: (done: number, total: number) => void,
+  // batchResult: このバッチで取得・更新されたノートだけを渡す。呼び出し側(fullSync)が
+  // バッチ単位でIndexedDBに永続化できるようにするため。途中でレート制限等により
+  // 後続バッチが失敗しても、既に処理済みのバッチの内容は失われない。
+  onPullProgress?: (done: number, total: number, batchResult: StoredNote[]) => void | Promise<void>,
 ): Promise<{ updated: StoredNote[]; conflicts: string[]; plan: SyncPlan }> {
   const plan = planSync(localNotes, remoteTree)
   const byId = new Map(localNotes.map((n) => [n.id, { ...n }]))
@@ -108,21 +111,24 @@ export async function runSync(
   // pull(読み取り)は並列バッチで処理する
   let pulled = 0
   for (const batch of chunk(plan.toPull, PULL_CONCURRENCY)) {
+    const batchResult: StoredNote[] = []
     await Promise.all(
       batch.map(async (target) => {
         const res = await github.getContent(target.folder, target.id)
         const parsed = parseNote(res.content)
         const existing = byId.get(target.id)
-        byId.set(target.id, {
+        const merged = {
           ...(existing ?? {}),
           ...parsed,
           baseSha: res.sha,
           dirty: false,
-        } as StoredNote)
+        } as StoredNote
+        byId.set(target.id, merged)
+        batchResult.push(merged)
       }),
     )
     pulled += batch.length
-    onPullProgress?.(pulled, plan.toPull.length)
+    await onPullProgress?.(pulled, plan.toPull.length, batchResult)
   }
 
   // フォルダ内 seq を createdAt 昇順で振り直す(3.2節Step 8)

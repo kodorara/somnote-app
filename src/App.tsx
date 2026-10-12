@@ -32,6 +32,7 @@ export default function App() {
   const [, setSearchQuery] = useState('')
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
 
   useEffect(() => {
@@ -69,9 +70,17 @@ export default function App() {
       syncInFlightRef.current = true
       try {
         if (navigator.onLine) {
-          const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
-          setConflicts(result.conflicts)
-          setSyncProgress(null)
+          try {
+            const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+            setConflicts(result.conflicts)
+            setSyncError(null)
+          } catch (err) {
+            // バッチごとに永続化しているため、途中で失敗してもここまでの分はIndexedDBに
+            // 残っている。エラーは画面に出した上で、残っている分だけでも表示に進む。
+            setSyncError(err instanceof Error ? err.message : String(err))
+          } finally {
+            setSyncProgress(null)
+          }
         }
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
@@ -139,9 +148,12 @@ export default function App() {
     try {
       const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
       setConflicts(result.conflicts)
+      setSyncError(null)
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : String(err))
+    } finally {
       setSyncProgress(null)
       await refreshPendingCount()
-    } finally {
       syncInFlightRef.current = false
     }
   }
@@ -184,6 +196,7 @@ export default function App() {
           同期中... {syncProgress.done}/{syncProgress.total}件
         </p>
       )}
+      {syncError && <p className="sync-error">同期エラー: {syncError}(ここまでの分は保存済みです)</p>}
       {conflicts.length > 0 && (
         <ConflictResolver
           localBody={conflicts[0].localBody}

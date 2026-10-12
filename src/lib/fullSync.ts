@@ -44,7 +44,20 @@ export async function fullSync(
 
   // ローカルが空の初回起動でも、2回目以降の通常同期でも同じ経路を通る
   // (空の場合は全件が「ローカルに無い新規リモートノート」として自然にtoPullに入る)
-  const { updated, conflicts: conflictIds, plan } = await runSync(localNotes, tree, githubAdapter, onPullProgress)
+  //
+  // バッチごとにIndexedDBへ永続化する: レート制限等で途中失敗しても、
+  // 既に完了したバッチの内容(例:5,386件中3,000件)は失わずに残る。
+  // batchResultには「pull対象」だけが入り、衝突ノートはplanSync上toPullとは
+  // 別カテゴリなのでここには一切含まれない(衝突の上書き保存は発生しない)。
+  const { updated, conflicts: conflictIds, plan } = await runSync(
+    localNotes,
+    tree,
+    githubAdapter,
+    async (done, total, batchResult) => {
+      await db.notes.bulkPut(batchResult)
+      await onPullProgress?.(done, total)
+    },
+  )
 
   const conflicts: ConflictItem[] = []
   for (const id of conflictIds) {

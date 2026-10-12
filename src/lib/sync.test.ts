@@ -112,14 +112,42 @@ describe('runSync', () => {
         content: remoteRawFor(id),
       })),
     }
-    const progressCalls: Array<[number, number]> = []
-    const result = await runSync([], remoteTree, github, (done, total) => progressCalls.push([done, total]))
+    const progressCalls: Array<[number, number, number]> = []
+    const result = await runSync([], remoteTree, github, (done, total, batchResult) => {
+      progressCalls.push([done, total, batchResult.length])
+    })
 
     expect(result.updated).toHaveLength(25)
     expect(github.getContent).toHaveBeenCalledTimes(25)
     // 25件は並列度12のバッチで3回に分かれる(12,12,1)ため、進捗コールバックも複数回呼ばれる
     expect(progressCalls.length).toBeGreaterThan(1)
-    expect(progressCalls[progressCalls.length - 1]).toEqual([25, 25])
+    expect(progressCalls[progressCalls.length - 1][0]).toBe(25)
+    expect(progressCalls[progressCalls.length - 1][1]).toBe(25)
+    // 各バッチで渡されるbatchResultの件数合計は全体件数と一致する
+    expect(progressCalls.reduce((sum, [, , n]) => sum + n, 0)).toBe(25)
+  })
+
+  it('still delivers already-completed batches via onPullProgress when a later batch throws', async () => {
+    const remoteRawFor = (id: string) =>
+      `---\nid: ${id}\ntitle: t-${id}\nfolder: f\nseq: 0\ntags: []\ncreated_at: ''\nupdated_at: ''\ndeleted: false\nllm_links: []\n---\n本文${id}\n`
+    const remoteTree = Array.from({ length: 20 }, (_, i) => ({ path: `notes/f/n${i}.md`, sha: `sha${i}` }))
+    const github = {
+      putContent: vi.fn(),
+      getContent: vi.fn().mockImplementation(async (_folder: string, id: string) => {
+        if (id === 'n15') throw new Error('getContent failed: 403')
+        return { sha: `sha-of-${id}`, content: remoteRawFor(id) }
+      }),
+    }
+    const persistedIds: string[] = []
+    const onPullProgress = vi.fn((_done: number, _total: number, batchResult: StoredNote[]): void => {
+      persistedIds.push(...batchResult.map((n) => n.id))
+    })
+
+    await expect(runSync([], remoteTree, github, onPullProgress)).rejects.toThrow('403')
+
+    // 最初のバッチ(n0〜n11, 並列度12)は例外発生前に完了しコールバックに渡されているはず
+    expect(persistedIds).toEqual(expect.arrayContaining(['n0', 'n1', 'n11']))
+    expect(persistedIds).not.toContain('n19')
   })
 
   it('reassigns seq within a folder by createdAt ascending after sync', async () => {
