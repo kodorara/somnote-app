@@ -34,11 +34,16 @@ def test_extract_tags_py_extracts_multiple_and_dedupes():
 
 
 def test_build_folders_json_maps_raw_folder_fields(tmp_path):
+    # raw/folders.jsonは実際にはSomCloud APIのレスポンスenvelopeのまま保存されている
+    # ({"result": ..., "data": [...]})。フォルダ名は`title`、`color`は整数ID。
     archive_root = tmp_path
     (archive_root / "raw").mkdir()
     (archive_root / "raw" / "folders.json").write_text(
-        json.dumps([{"folder_id": "abc", "name": "前ノート", "color": "#50bebe", "seq": 0}]),
+        json.dumps({
+            "result": "success",
+            "data": [{"folder_id": "abc", "title": "前ノート", "color": 3, "seq": 0}],
+        }),
         encoding="utf-8",
     )
     folders = build_folders_json(archive_root)
-    assert folders == [{"folderId": "abc", "name": "前ノート", "color": "#50bebe", "seq": 0}]
+    assert folders == [{"folderId": "abc", "name": "前ノート", "color": "#f2cc8f", "seq": 0}]

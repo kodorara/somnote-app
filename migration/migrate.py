@@ -36,10 +36,32 @@ def build_frontmatter(record: dict, body: str) -> dict:
     }
 
 
+# raw/folders.jsonの実際の構造はSomCloud APIのレスポンス envelope のままで、
+# {"result": "success", ..., "data": [...]} という形になっている(引き継ぎ書3.2節の
+# サンプルは簡略化されたものだった)。各要素のフォルダ名フィールドも`name`ではなく`title`で、
+# `color`はhex文字列ではなく小さな整数ID(0〜5程度)。SomCloud側の実際の色の意味は
+# アーカイブ内に記録が無いため、整数IDを固定の代替パレットにマッピングする
+# (後で好きな配色に調整可能)。
+FOLDER_COLOR_PALETTE = {
+    0: "#808080",
+    1: "#e07a5f",
+    2: "#81b29a",
+    3: "#f2cc8f",
+    4: "#3d5a80",
+    5: "#9d8189",
+}
+
+
 def build_folders_json(archive_root: Path) -> list[dict]:
-    raw_folders = json.loads((archive_root / "raw" / "folders.json").read_text(encoding="utf-8"))
+    envelope = json.loads((archive_root / "raw" / "folders.json").read_text(encoding="utf-8"))
+    raw_folders = envelope["data"]
     return [
-        {"folderId": f["folder_id"], "name": f["name"], "color": f["color"], "seq": f["seq"]}
+        {
+            "folderId": f["folder_id"],
+            "name": f["title"],
+            "color": FOLDER_COLOR_PALETTE.get(f["color"], "#808080"),
+            "seq": f["seq"],
+        }
         for f in raw_folders
     ]
 
