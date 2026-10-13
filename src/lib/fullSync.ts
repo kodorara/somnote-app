@@ -25,13 +25,20 @@ export async function fullSync(
   const { owner, repo, token } = settings
   const { tree } = await github.getTree(owner, repo, 'main', token)
 
-  // folders.json は常に最新を取得して反映する(設計書3.2節Step 7)
+  // folders.json はリモートのSHAが前回同期時と変わっている場合だけ取得・上書きする。
+  // 毎回無条件に取得→上書きすると、ローカルで作成したばかりでまだpushしていない
+  // フォルダが次の同期で消えてしまう(リモートに存在しないため)。SHAが前回と同じなら
+  // 「リモートは変化していない」とみなしローカルの状態をそのまま残す。
   const foldersEntry = tree.find((e) => e.path === 'folders.json')
   if (foldersEntry) {
-    const foldersRes = await github.getContent(owner, repo, 'folders.json', token)
-    const folders: StoredFolder[] = JSON.parse(foldersRes.content)
-    await db.folders.clear()
-    await db.folders.bulkPut(folders)
+    const meta = await db.syncMeta.get('foldersBaseSha')
+    if (meta?.value !== foldersEntry.sha) {
+      const foldersRes = await github.getContent(owner, repo, 'folders.json', token)
+      const folders: StoredFolder[] = JSON.parse(foldersRes.content)
+      await db.folders.clear()
+      await db.folders.bulkPut(folders)
+      await db.syncMeta.put({ key: 'foldersBaseSha', value: foldersRes.sha })
+    }
   }
 
   const localNotes = await db.notes.toArray()

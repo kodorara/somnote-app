@@ -29,6 +29,7 @@ function githubStub(overrides: Partial<Record<string, unknown>> = {}) {
 beforeEach(async () => {
   await db.notes.clear()
   await db.folders.clear()
+  await db.syncMeta.clear()
 })
 
 describe('fullSync - 初回起動(ローカルが空)', () => {
@@ -112,5 +113,20 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
     expect(newNote?.title).toBe('タイトルA')
     const untouched = await db.notes.get('existing')
     expect(untouched?.body).toBe('既存の本文')
+  })
+
+  it('does not overwrite a locally-created folder that has not been pushed yet, when the remote folders.json is unchanged', async () => {
+    // 1回目の同期でfolders.jsonのSHAを記録させる
+    const github = githubStub()
+    await fullSync({ token: 't', owner: 'o', repo: 'r' }, github as never)
+
+    // ローカルでフォルダを追加(まだpushしていない)
+    await db.folders.add({ folderId: 'new-local', name: 'ローカル新規', color: '#000', seq: 1 })
+
+    // 2回目の同期: リモートのfolders.jsonのSHAは変わっていない(前回と同じ 'folders-sha')
+    await fullSync({ token: 't', owner: 'o', repo: 'r' }, github as never)
+
+    const folders = await db.folders.toArray()
+    expect(folders.some((f) => f.folderId === 'new-local')).toBe(true)
   })
 })

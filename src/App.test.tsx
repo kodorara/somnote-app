@@ -6,8 +6,13 @@ import * as githubClient from './lib/github'
 import App from './App'
 
 beforeEach(async () => {
+  // 前のテストでunmountされたコンポーネントのdoSync()等がまだ完了していない場合、
+  // ここで1tick待つことで、そのテーブル書き込みが次のテストの実行中に紛れ込む
+  // (clear()の後に書き込まれてデータが汚染される)のを防ぐ
+  await new Promise((resolve) => setTimeout(resolve, 0))
   await db.notes.clear()
   await db.folders.clear()
+  await db.syncMeta.clear()
   localStorage.clear()
   vi.restoreAllMocks()
   await db.folders.put({ folderId: '1', name: '前ノート', color: '#50bebe', seq: 0 })
@@ -130,5 +135,103 @@ describe('creating a new note after navigating back', () => {
 
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
     expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('')
+  })
+})
+
+describe('explicit save button', () => {
+  it('persists the note to IndexedDB immediately without navigating away', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.change(textarea, { target: { value: '保存ボタンのテスト' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(async () => {
+      const all = await db.notes.toArray()
+      expect(all.some((n) => n.body === '保存ボタンのテスト')).toBe(true)
+    })
+    // 保存しただけではエディタ画面から移動していない(本文はそのまま表示され続ける)
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('保存ボタンのテスト')
+  })
+})
+
+describe('folder management', () => {
+  it('creates a folder and pushes folders.json to GitHub', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const putContentSpy = vi.spyOn(githubClient, 'putContent').mockResolvedValue({ content: { sha: 'folders-sha-2' } })
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' })) // -> notes
+    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' })) // -> folders
+    await screen.findByLabelText('新しいフォルダ名')
+
+    fireEvent.change(screen.getByLabelText('新しいフォルダ名'), { target: { value: '趣味' } })
+    const createForm = container.querySelector('.folder-create-form') as HTMLElement
+    fireEvent.click(createForm.querySelector('button') as HTMLButtonElement)
+
+    // エディタの「フォルダ移動」selectにも同じ名前のoptionが出るため、
+    // フォルダ一覧側の実際のボタン(role="button")で曖昧さを避けて確認する
+    expect(await screen.findByRole('button', { name: '趣味' })).toBeInTheDocument()
+    await waitFor(() => expect(putContentSpy).toHaveBeenCalledWith('o', 'somnote-data', 'folders.json', expect.any(String), null, 't'))
+    const sentFolders = JSON.parse(putContentSpy.mock.calls[0][3] as string)
+    expect(sentFolders.some((f: { name: string }) => f.name === '趣味')).toBe(true)
+  })
+
+  it('refuses to delete a non-empty folder and shows the reason', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    await db.notes.put({
+      id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文', baseSha: 'sha1', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    await screen.findByLabelText('前ノートを削除')
+
+    fireEvent.click(screen.getByLabelText('前ノートを削除'))
+
+    expect(await screen.findByText(/削除できません/)).toBeInTheDocument()
+    expect(await db.folders.get('1')).toBeTruthy()
+  })
+})
+
+describe('moving a note to a different folder', () => {
+  it('removes the note from the current folder view and switches to the notes screen', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    await db.notes.put({
+      id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文', baseSha: 'sha1', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+    const { container } = render(<App />)
+    // 起動直後の新規ドラフトを離れ、既存メモ(n1)を開く
+    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    fireEvent.click(await screen.findByText('タイトル'))
+    await screen.findByDisplayValue('本文')
+
+    fireEvent.change(screen.getByLabelText('フォルダ移動'), { target: { value: '仕事' } })
+
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    const moved = await db.notes.get('n1')
+    expect(moved?.folder).toBe('仕事')
+    expect(moved?.dirty).toBe(true)
   })
 })

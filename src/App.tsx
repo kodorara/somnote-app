@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { db, type StoredNote, type StoredFolder } from './lib/db'
-import { createDraftNote, shouldDiscardDraft } from './lib/draftNote'
+import { createDraftNote, shouldDiscardDraft, deriveTitle } from './lib/draftNote'
 import { getGithubSettings, saveGithubSettings, type GithubSettings } from './lib/githubSettings'
 import { buildIndex, search } from './lib/search'
 import { fullSync } from './lib/fullSync'
+import { pushFolders } from './lib/folderSync'
+import { createFolder, deleteFolder } from './lib/folders'
 import * as githubClient from './lib/github'
 import type { ConflictItem } from './lib/sync'
 import { FolderList } from './components/FolderList'
@@ -40,6 +42,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState<SortBy>('createdDesc')
   const [wordFilter, setWordFilter] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
+  const [folderError, setFolderError] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
 
   useEffect(() => {
@@ -114,11 +117,29 @@ export default function App() {
     setActiveNote({ ...activeNote, body, dirty: true, updatedAt: new Date().toISOString() })
   }
 
+  // noteを明示的な引数で受け取る(activeNoteのstate更新は非同期なため、呼び出し直後の
+  // 最新値を確実に使うには呼び出し元から渡してもらう方が安全)
+  const saveNote = async (note: StoredNote) => {
+    // 設計書2.2節: タイトルは保存のたびに本文1行目から自動算出する
+    const withTitle = { ...note, title: deriveTitle(note.body) }
+    await db.notes.put(withTitle)
+    setNotes((prev) => {
+      const exists = prev.some((n) => n.id === withTitle.id)
+      return exists ? prev.map((n) => (n.id === withTitle.id ? withTitle : n)) : [...prev, withTitle]
+    })
+    if (activeNote?.id === withTitle.id) setActiveNote(withTitle)
+    await refreshPendingCount()
+  }
+
+  const saveActiveNote = async () => {
+    if (!activeNote) return
+    await saveNote(activeNote)
+  }
+
   const leaveEditor = async () => {
     if (!activeNote) return
     if (!shouldDiscardDraft(activeNote.body) || notes.some((n) => n.id === activeNote.id)) {
-      await db.notes.put(activeNote)
-      await refreshPendingCount()
+      await saveNote(activeNote)
     }
   }
 
@@ -148,6 +169,59 @@ export default function App() {
     const draft = createDraftNote(selectedFolder, maxSeq)
     setActiveNote(draft)
     setMobileScreen('editor')
+  }
+
+  const moveNoteToFolder = async (newFolderName: string) => {
+    if (!activeNote || newFolderName === activeNote.folder) return
+    const moved = { ...activeNote, folder: newFolderName, dirty: true, updatedAt: new Date().toISOString() }
+    await db.notes.put(moved)
+    // 現在表示中のフォルダ一覧には、移動先が別フォルダなのでもう含めない
+    setNotes(notes.filter((n) => n.id !== moved.id))
+    setActiveNote(null)
+    setMobileScreen('notes')
+    await refreshPendingCount()
+  }
+
+  const handleCreateFolder = async (name: string) => {
+    setFolderError(null)
+    const folder = await createFolder(name, folders)
+    setFolders((prev) => [...prev, folder])
+    if (settings && navigator.onLine) {
+      try {
+        await pushFolders(settings, githubClient)
+      } catch (err) {
+        setFolderError(err instanceof Error ? err.message : String(err))
+      }
+    }
+  }
+
+  const handleDeleteFolder = async (folder: StoredFolder) => {
+    setFolderError(null)
+    try {
+      await deleteFolder(folder)
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : String(err))
+      return
+    }
+    const remaining = folders.filter((f) => f.folderId !== folder.folderId)
+    setFolders(remaining)
+    if (selectedFolder === folder.name) {
+      const next = remaining[0]
+      if (next) {
+        setSelectedFolder(next.name)
+        setNotes(await db.notes.where('folder').equals(next.name).toArray())
+      } else {
+        setSelectedFolder(null)
+        setNotes([])
+      }
+    }
+    if (settings && navigator.onLine) {
+      try {
+        await pushFolders(settings, githubClient)
+      } catch (err) {
+        setFolderError(err instanceof Error ? err.message : String(err))
+      }
+    }
   }
 
   const runSearch = async (query: string) => {
@@ -259,6 +333,7 @@ export default function App() {
       )}
       <div className={`columns mobile-${mobileScreen}`}>
         <div className="col-folders">
+          {folderError && <p className="folder-error">{folderError}</p>}
           <FolderList
             folders={folders}
             selectedName={selectedFolder}
@@ -270,6 +345,8 @@ export default function App() {
               setTagFilter(null)
               setMobileScreen('notes')
             }}
+            onCreate={handleCreateFolder}
+            onDelete={handleDeleteFolder}
           />
         </div>
         <div className="col-notes">
@@ -303,9 +380,26 @@ export default function App() {
           {activeNote && (
             <>
               <Editor body={activeNote.body} onChange={updateBody} />
-              <button type="button" className="btn" onClick={deleteActiveNote}>
-                ゴミ箱に移動
-              </button>
+              <div className="editor-actions">
+                <button type="button" className="btn btn-primary" onClick={saveActiveNote}>
+                  保存
+                </button>
+                <select
+                  className="input"
+                  aria-label="フォルダ移動"
+                  value={activeNote.folder}
+                  onChange={(e) => moveNoteToFolder(e.target.value)}
+                >
+                  {folders.map((f) => (
+                    <option key={f.folderId} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn" onClick={deleteActiveNote}>
+                  ゴミ箱に移動
+                </button>
+              </div>
               <LlmLinkPanel
                 body={activeNote.body}
                 links={activeNote.llmLinks}
