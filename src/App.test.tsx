@@ -102,3 +102,33 @@ describe('mobile back navigation', () => {
     expect(screen.queryByRole('button', { name: '← 戻る' })).not.toBeInTheDocument()
   })
 })
+
+describe('creating a new note after navigating back', () => {
+  it('opens a fresh empty draft when "+ 新規作成" is clicked from the note list', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    await db.notes.put({
+      id: 'existing', title: '既存メモ', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '既存の本文', baseSha: 'sha1', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/existing.md', sha: 'sha1' }], truncated: false,
+    })
+
+    const { container } = render(<App />)
+    // 起動直後の空ドラフトを離れ、一覧→既存メモを開く(新規作成ボタンのテストのため一覧画面へ)
+    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    fireEvent.click(await screen.findByText('既存メモ'))
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('既存の本文')
+
+    // 一覧へ戻り、「+ 新規作成」で新しい空メモを開けること
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    fireEvent.click(screen.getByRole('button', { name: '+ 新規作成' }))
+
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('')
+  })
+})

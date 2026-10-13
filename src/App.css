@@ -79,6 +79,12 @@
   color: var(--color-accent-100);
 }
 
+.new-note-btn {
+  display: block;
+  width: calc(100% - 2 * var(--space-4));
+  margin: var(--space-3) var(--space-4) 0;
+}
+
 /* — note list controls (sort / tag / word filter) — */
 .note-list-controls {
   display: flex;

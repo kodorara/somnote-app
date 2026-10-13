@@ -141,6 +141,15 @@ export default function App() {
     }
   }
 
+  const createNewNote = async () => {
+    if (!selectedFolder) return
+    await leaveEditor()
+    const maxSeq = notes.reduce((m, n) => Math.max(m, n.seq), -1)
+    const draft = createDraftNote(selectedFolder, maxSeq)
+    setActiveNote(draft)
+    setMobileScreen('editor')
+  }
+
   const runSearch = async (query: string) => {
     setSearchQuery(query)
     if (!query) {
@@ -264,6 +273,9 @@ export default function App() {
           />
         </div>
         <div className="col-notes">
+          <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
+            + 新規作成
+          </button>
           <NoteListControls
             sortBy={sortBy}
             onSortByChange={setSortBy}
