@@ -37,7 +37,7 @@ export default function App() {
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [sortBy, setSortBy] = useState<SortBy>('seq')
+  const [sortBy, setSortBy] = useState<SortBy>('createdDesc')
   const [wordFilter, setWordFilter] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
