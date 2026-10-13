@@ -132,6 +132,15 @@ export default function App() {
     await refreshPendingCount()
   }
 
+  const goBack = async () => {
+    if (mobileScreen === 'editor') {
+      await leaveEditor()
+      setMobileScreen('notes')
+    } else if (mobileScreen === 'notes') {
+      setMobileScreen('folders')
+    }
+  }
+
   const runSearch = async (query: string) => {
     setSearchQuery(query)
     if (!query) {
@@ -218,6 +227,11 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
+        {mobileScreen !== 'folders' && (
+          <button type="button" className="btn btn-ghost mobile-only" onClick={goBack}>
+            ← 戻る
+          </button>
+        )}
         <SearchBar onQueryChange={runSearch} />
         <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
       </div>

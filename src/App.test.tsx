@@ -79,3 +79,26 @@ describe('App startup', () => {
     expect(stored?.baseSha).toBe('pushed-sha')
   })
 })
+
+describe('mobile back navigation', () => {
+  it('shows a back button on startup (editor is the initial mobile screen) and steps back to notes then folders', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    localStorage.setItem('lastFolder', '前ノート')
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    // 起動直後はエディタ画面(スマホではここだけが見えている)なので、戻るボタンが出ているはず
+    const backButton = screen.getByRole('button', { name: '← 戻る' })
+    expect(container.querySelector('.columns')).toHaveClass('mobile-editor')
+
+    fireEvent.click(backButton)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    expect(screen.getByRole('button', { name: '← 戻る' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
+    // フォルダ画面まで戻ったら、それ以上戻る先がないのでボタンは消える
+    expect(screen.queryByRole('button', { name: '← 戻る' })).not.toBeInTheDocument()
+  })
+})

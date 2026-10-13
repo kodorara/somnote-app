@@ -17,6 +17,10 @@
   border-bottom: 1px solid var(--color-divider);
 }
 
+/* デスクトップでは3カラムが常に全て見えているので「戻る」は不要。
+   スマホ幅(下の@media参照)でのみ表示する。 */
+.mobile-only { display: none; }
+
 .sync-progress,
 .sync-error {
   margin: 0;
@@ -215,6 +219,8 @@
 .app-lock-error { margin: 0; font-size: 12px; color: var(--color-accent-400); }
 
 @media (max-width: 768px) {
+  .mobile-only { display: inline-flex; }
+
   .columns {
     position: relative;
     overflow: hidden;
