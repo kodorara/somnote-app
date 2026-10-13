@@ -21,6 +21,26 @@ function headers(token: string): Record<string, string> {
   }
 }
 
+// GitHubはレート制限・権限不足・単純なパスの誤りをいずれも403/404で返すことがあり、
+// ステータスコードだけでは原因が分からない。レスポンス本文の"message"とレート制限の
+// 残量ヘッダーを合わせて表示することで、ユーザーが原因を判断できるようにする。
+async function describeError(prefix: string, res: Response): Promise<string> {
+  const remaining = res.headers.get('x-ratelimit-remaining')
+  const reset = res.headers.get('x-ratelimit-reset')
+  let body = ''
+  try {
+    const json = await res.json()
+    body = json?.message ?? ''
+  } catch {
+    // レスポンスがJSONでない場合は本文なしで続行
+  }
+  const rateInfo =
+    remaining !== null
+      ? ` (レート制限残り${remaining}回${reset ? `, リセット: ${new Date(Number(reset) * 1000).toLocaleString('ja-JP')}` : ''})`
+      : ''
+  return `${prefix} failed: ${res.status}${body ? ` - ${body}` : ''}${rateInfo}`
+}
+
 // pathは "notes/前ノート/a.md" のようにスラッシュを含む。encodeURIComponent(path)を
 // そのまま使うとスラッシュ自体も%2Fにエンコードされ、GitHub Contents APIのルーティングに
 // 合わなくなるため、パスをセグメントごとに分けてエンコードしてから再結合する。
@@ -43,7 +63,7 @@ export async function getTree(
   const res = await fetch(`${API}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, {
     headers: headers(token),
   })
-  if (!res.ok) throw new Error(`getTree failed: ${res.status}`)
+  if (!res.ok) throw new Error(await describeError('getTree', res))
   return res.json() as Promise<{ tree: TreeEntry[]; truncated: boolean }>
 }
 
@@ -56,7 +76,7 @@ export async function getContent(
   const res = await fetch(`${API}/repos/${owner}/${repo}/contents/${encodePath(path)}`, {
     headers: headers(token),
   })
-  if (!res.ok) throw new Error(`getContent failed: ${res.status}`)
+  if (!res.ok) throw new Error(await describeError('getContent', res))
   const data = await res.json()
   return { sha: data.sha as string, content: decodeUtf8Base64(data.content as string) }
 }
@@ -78,6 +98,6 @@ export async function putContent(
       ...(baseSha ? { sha: baseSha } : {}),
     }),
   })
-  if (!res.ok) throw new Error(`putContent failed: ${res.status}`)
+  if (!res.ok) throw new Error(await describeError('putContent', res))
   return res.json() as Promise<{ content: { sha: string } }>
 }

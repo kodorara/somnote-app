@@ -29,6 +29,22 @@ describe('getTree', () => {
     )
     expect(result.tree).toEqual([{ path: 'notes/仕事/a.md', sha: 'abc' }])
   })
+
+  it('throws an error including GitHub\'s message and rate-limit remaining count on failure', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: {
+        get: (name: string) => (name === 'x-ratelimit-remaining' ? '0' : name === 'x-ratelimit-reset' ? '1791825761' : null),
+      },
+      json: async () => ({ message: 'API rate limit exceeded for user ID 123.' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getTree('owner', 'repo', 'main', 'token123')).rejects.toThrow(
+      /getTree failed: 403 - API rate limit exceeded.*レート制限残り0回/,
+    )
+  })
 })
 
 describe('getContent', () => {
