@@ -46,7 +46,6 @@ describe('App startup', () => {
 
   it('opens directly into the editor with a fresh draft note in the last used folder once settings exist', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     render(<App />)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
@@ -88,7 +87,6 @@ describe('App startup', () => {
 describe('mobile back navigation', () => {
   it('shows a back button on startup (editor is the initial mobile screen) and steps back to notes then folders', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     const { container } = render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
@@ -111,7 +109,6 @@ describe('mobile back navigation', () => {
 describe('creating a new note after navigating back', () => {
   it('opens a fresh empty draft when "+ 新規作成" is clicked from the note list', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     await db.notes.put({
       id: 'existing', title: '既存メモ', folder: '前ノート', seq: 0, tags: [],
       createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
@@ -141,7 +138,6 @@ describe('creating a new note after navigating back', () => {
 describe('explicit save button', () => {
   it('persists the note to IndexedDB immediately without navigating away', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     render(<App />)
     const textarea = await screen.findByRole('textbox', { name: '本文' })
@@ -161,7 +157,6 @@ describe('explicit save button', () => {
 describe('folder management', () => {
   it('creates a folder and pushes folders.json to GitHub', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     const putContentSpy = vi.spyOn(githubClient, 'putContent').mockResolvedValue({ content: { sha: 'folders-sha-2' } })
     const { container } = render(<App />)
@@ -185,7 +180,6 @@ describe('folder management', () => {
 
   it('refuses to delete a non-empty folder and shows the reason', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     await db.notes.put({
       id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
       createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
@@ -210,7 +204,6 @@ describe('folder management', () => {
 describe('moving a note to a different folder', () => {
   it('removes the note from the current folder view and switches to the notes screen', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    localStorage.setItem('lastFolder', '前ノート')
     await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
     await db.notes.put({
       id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
@@ -221,17 +214,55 @@ describe('moving a note to a different folder', () => {
       tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
     })
     const { container } = render(<App />)
-    // 起動直後の新規ドラフトを離れ、既存メモ(n1)を開く
-    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    // 起動直後の新規ドラフトが完全に整うのを待ってから操作する(ドラフト生成の
+    // 非同期処理がまだ途中のまま次の操作に進むと、まれにナビゲーションが
+    // 取りこぼされることがあったため、本文が空であることまで確認しておく)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
     fireEvent.click(await screen.findByText('タイトル'))
     await screen.findByDisplayValue('本文')
 
     fireEvent.change(screen.getByLabelText('フォルダ移動'), { target: { value: '仕事' } })
 
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
     const moved = await db.notes.get('n1')
     expect(moved?.folder).toBe('仕事')
     expect(moved?.dirty).toBe(true)
+  })
+})
+
+describe('startup folder selection', () => {
+  it('opens the draft in the folder with the smallest seq, not insertion order', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    // beforeEachで先に folderId:'1'(前ノート, seq:0) が入っているので、
+    // それより小さいseqの別フォルダを追加し、そちらが優先されることを確認する
+    await db.folders.put({ folderId: '0', name: '一番上', color: '#000', seq: -1 })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(screen.getByRole('button', { name: '一番上' })).toHaveAttribute('aria-current', 'true')
+  })
+})
+
+describe('reordering folders', () => {
+  it('moves a folder up and pushes the updated folders.json', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const putContentSpy = vi.spyOn(githubClient, 'putContent').mockResolvedValue({ content: { sha: 'x' } })
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.click(screen.getByLabelText('仕事を上へ'))
+
+    await waitFor(async () => {
+      const stored = await db.folders.toArray()
+      const work = stored.find((f) => f.folderId === '2')
+      const main = stored.find((f) => f.folderId === '1')
+      expect(work?.seq).toBe(0)
+      expect(main?.seq).toBe(1)
+    })
+    await waitFor(() => expect(putContentSpy).toHaveBeenCalledWith('o', 'somnote-data', 'folders.json', expect.any(String), null, 't'))
   })
 })

@@ -7,9 +7,10 @@ interface Props {
   onSelect: (folderName: string) => void
   onCreate: (name: string) => void
   onDelete: (folder: StoredFolder) => void
+  onMove: (folderId: string, direction: 'up' | 'down') => void
 }
 
-export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete }: Props) {
+export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete, onMove }: Props) {
   const [newName, setNewName] = useState('')
   const sorted = [...folders].sort((a, b) => a.seq - b.seq)
 
@@ -23,10 +24,31 @@ export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete
   return (
     <div className="folder-list-wrap">
       <ul className="folder-list">
-        {sorted.map((f) => (
+        {sorted.map((f, i) => (
           <li key={f.folderId} role="listitem">
+            <div className="folder-move-btns">
+              <button
+                type="button"
+                className="folder-move-btn"
+                aria-label={`${f.name}を上へ`}
+                disabled={i === 0}
+                onClick={() => onMove(f.folderId, 'up')}
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                className="folder-move-btn"
+                aria-label={`${f.name}を下へ`}
+                disabled={i === sorted.length - 1}
+                onClick={() => onMove(f.folderId, 'down')}
+              >
+                ▼
+              </button>
+            </div>
             <button
               type="button"
+              className="folder-select-btn"
               aria-current={f.name === selectedName}
               style={{ borderLeft: `4px solid ${f.color}` }}
               onClick={() => onSelect(f.name)}

@@ -7,7 +7,7 @@ const folders = [
   { folderId: '2', name: '仕事', color: '#ff0000', seq: 1 },
 ]
 
-const baseProps = { selectedName: null, onSelect: () => {}, onCreate: () => {}, onDelete: () => {} }
+const baseProps = { selectedName: null, onSelect: () => {}, onCreate: () => {}, onDelete: () => {}, onMove: () => {} }
 
 describe('FolderList', () => {
   it('renders all folders sorted by seq', () => {
@@ -56,5 +56,22 @@ describe('FolderList', () => {
     render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
     fireEvent.click(screen.getByLabelText('仕事を削除'))
     expect(onDelete).toHaveBeenCalledWith(folders[1])
+  })
+
+  it('calls onMove with the folderId and direction when the up/down buttons are clicked', () => {
+    const onMove = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onMove={onMove} />)
+    fireEvent.click(screen.getByLabelText('仕事を上へ'))
+    expect(onMove).toHaveBeenCalledWith('2', 'up')
+    fireEvent.click(screen.getByLabelText('前ノートを下へ'))
+    expect(onMove).toHaveBeenCalledWith('1', 'down')
+  })
+
+  it('disables the up button for the first folder and the down button for the last', () => {
+    render(<FolderList {...baseProps} folders={folders} />)
+    expect(screen.getByLabelText('前ノートを上へ')).toBeDisabled()
+    expect(screen.getByLabelText('前ノートを下へ')).not.toBeDisabled()
+    expect(screen.getByLabelText('仕事を上へ')).not.toBeDisabled()
+    expect(screen.getByLabelText('仕事を下へ')).toBeDisabled()
   })
 })

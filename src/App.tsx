@@ -5,7 +5,7 @@ import { getGithubSettings, saveGithubSettings, type GithubSettings } from './li
 import { buildIndex, search } from './lib/search'
 import { fullSync } from './lib/fullSync'
 import { pushFolders } from './lib/folderSync'
-import { createFolder, deleteFolder } from './lib/folders'
+import { createFolder, deleteFolder, moveFolder, topFolder } from './lib/folders'
 import * as githubClient from './lib/github'
 import type { ConflictItem } from './lib/sync'
 import { FolderList } from './components/FolderList'
@@ -57,8 +57,9 @@ export default function App() {
   }
 
   const loadFolderAndDraft = async (allFolders: StoredFolder[]) => {
-    const lastFolderName = localStorage.getItem('lastFolder')
-    const folder = allFolders.find((f) => f.name === lastFolderName) ?? allFolders[0]
+    // 起動時は常に一番上(表示順が最小)のフォルダで新規メモを書き始める。
+    // フォルダの並び替え(上下ボタン)で、どのフォルダを起動時の既定にするか選べる。
+    const folder = topFolder(allFolders)
     if (!folder) return
     setSelectedFolder(folder.name)
 
@@ -186,6 +187,21 @@ export default function App() {
     setFolderError(null)
     const folder = await createFolder(name, folders)
     setFolders((prev) => [...prev, folder])
+    if (settings && navigator.onLine) {
+      try {
+        await pushFolders(settings, githubClient)
+      } catch (err) {
+        setFolderError(err instanceof Error ? err.message : String(err))
+      }
+    }
+  }
+
+  const handleMoveFolder = async (folderId: string, direction: 'up' | 'down') => {
+    const updated = moveFolder(folders, folderId, direction)
+    if (updated === folders) return // 一番上/一番下で動かせない場合は何もしない
+    const changed = updated.filter((f, i) => f.seq !== folders[i]?.seq)
+    await db.folders.bulkPut(changed)
+    setFolders(updated)
     if (settings && navigator.onLine) {
       try {
         await pushFolders(settings, githubClient)
@@ -347,6 +363,7 @@ export default function App() {
             }}
             onCreate={handleCreateFolder}
             onDelete={handleDeleteFolder}
+            onMove={handleMoveFolder}
           />
         </div>
         <div className="col-notes">
@@ -403,10 +420,10 @@ export default function App() {
               <LlmLinkPanel
                 body={activeNote.body}
                 links={activeNote.llmLinks}
-                onAddLink={(url, label) => {
+                onAddLink={(url, memo) => {
                   setActiveNote({
                     ...activeNote,
-                    llmLinks: [...activeNote.llmLinks, { url, label, addedAt: new Date().toISOString() }],
+                    llmLinks: [...activeNote.llmLinks, { url, label: memo, addedAt: new Date().toISOString() }],
                     dirty: true,
                   })
                 }}

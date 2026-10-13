@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './db'
-import { createFolder, deleteFolder } from './folders'
+import { createFolder, deleteFolder, moveFolder, topFolder } from './folders'
 
 beforeEach(async () => {
   await db.folders.clear()
@@ -50,5 +50,50 @@ describe('deleteFolder', () => {
 
     await expect(deleteFolder(folder)).rejects.toThrow('1件のメモがあるため削除できません')
     expect(await db.folders.get('1')).toEqual(folder)
+  })
+})
+
+describe('moveFolder', () => {
+  const folders = [
+    { folderId: 'a', name: 'A', color: '#000', seq: 0 },
+    { folderId: 'b', name: 'B', color: '#000', seq: 1 },
+    { folderId: 'c', name: 'C', color: '#000', seq: 2 },
+  ]
+
+  it('swaps seq with the previous folder when moving up', () => {
+    const result = moveFolder(folders, 'b', 'up')
+    expect(result.find((f) => f.folderId === 'b')?.seq).toBe(0)
+    expect(result.find((f) => f.folderId === 'a')?.seq).toBe(1)
+    expect(result.find((f) => f.folderId === 'c')?.seq).toBe(2) // 無関係なフォルダは変化しない
+  })
+
+  it('swaps seq with the next folder when moving down', () => {
+    const result = moveFolder(folders, 'a', 'down')
+    expect(result.find((f) => f.folderId === 'a')?.seq).toBe(1)
+    expect(result.find((f) => f.folderId === 'b')?.seq).toBe(0)
+  })
+
+  it('does nothing when moving the topmost folder up', () => {
+    const result = moveFolder(folders, 'a', 'up')
+    expect(result).toEqual(folders)
+  })
+
+  it('does nothing when moving the bottommost folder down', () => {
+    const result = moveFolder(folders, 'c', 'down')
+    expect(result).toEqual(folders)
+  })
+})
+
+describe('topFolder', () => {
+  it('returns the folder with the smallest seq', () => {
+    const folders = [
+      { folderId: 'b', name: 'B', color: '#000', seq: 2 },
+      { folderId: 'a', name: 'A', color: '#000', seq: 0 },
+    ]
+    expect(topFolder(folders)?.folderId).toBe('a')
+  })
+
+  it('returns undefined for an empty list', () => {
+    expect(topFolder([])).toBeUndefined()
   })
 })

@@ -77,7 +77,7 @@
   display: flex;
   align-items: stretch;
 }
-.folder-list li button:first-child {
+.folder-select-btn {
   flex: 1;
   display: block;
   text-align: left;
@@ -89,11 +89,29 @@
   color: var(--color-text);
   cursor: pointer;
 }
-.folder-list li button:first-child:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
-.folder-list li button:first-child[aria-current='true'] {
+.folder-select-btn:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.folder-select-btn[aria-current='true'] {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-accent-100);
 }
+.folder-move-btns {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 20px;
+}
+.folder-move-btn {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 8px;
+  padding: 0;
+  line-height: 1;
+}
+.folder-move-btn:hover:not(:disabled) { color: var(--color-accent-400); }
+.folder-move-btn:disabled { opacity: 0.25; cursor: default; }
 .folder-delete-btn {
   flex: none;
   width: 32px;
@@ -225,6 +243,11 @@
 }
 
 /* — llm link panel — */
+.llm-panel-toggle {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
 .llm-link-panel {
   display: flex;
   flex-direction: column;

@@ -65,4 +65,12 @@ describe('NoteList', () => {
     fireEvent.click(screen.getByText('先に書いたメモ'))
     expect(onSelect).toHaveBeenCalledWith('b')
   })
+
+  it('shows the created and updated dates for each note', () => {
+    render(<NoteList {...defaultProps} notes={notes} />)
+    const items = screen.getAllByRole('listitem')
+    // 先に書いたメモ: created 2026-10-10, updated 2026-10-09
+    expect(items[0]).toHaveTextContent('作成 2026/10/10')
+    expect(items[0]).toHaveTextContent('編集 2026/10/09')
+  })
 })
