@@ -11,6 +11,26 @@ beforeEach(async () => {
   localStorage.clear()
   vi.restoreAllMocks()
   await db.folders.put({ folderId: '1', name: '前ノート', color: '#50bebe', seq: 0 })
+  // これらのテストはロック画面の後段(設定・同期)の挙動を検証するためのものなので、
+  // ロック自体のテストは別途 describe('App lock') で行い、ここでは解除済み状態にしておく。
+  localStorage.setItem('somnote.unlocked', 'true')
+})
+
+describe('App lock', () => {
+  it('shows the password screen when the app has never been unlocked on this device', async () => {
+    localStorage.clear()
+    render(<App />)
+    expect(await screen.findByLabelText('パスワード')).toBeInTheDocument()
+  })
+
+  it('unlocks with the correct password and remembers it for next time', async () => {
+    localStorage.clear()
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('パスワード'), { target: { value: 'waki1223' } })
+    fireEvent.click(screen.getByRole('button', { name: '開く' }))
+    await waitFor(() => expect(screen.queryByLabelText('パスワード')).not.toBeInTheDocument())
+    expect(localStorage.getItem('somnote.unlocked')).toBe('true')
+  })
 })
 
 describe('App startup', () => {

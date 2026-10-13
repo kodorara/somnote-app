@@ -15,11 +15,14 @@ import { LlmLinkPanel } from './components/LlmLinkPanel'
 import { SyncStatusBadge } from './components/SyncStatusBadge'
 import { ConflictResolver } from './components/ConflictResolver'
 import { Settings } from './components/Settings'
+import { AppLock } from './components/AppLock'
+import { checkPassword, isUnlocked, setUnlocked } from './lib/appLock'
 import './App.css'
 
 type MobileScreen = 'folders' | 'notes' | 'editor'
 
 export default function App() {
+  const [unlocked, setUnlockedState] = useState(isUnlocked())
   const [settings, setSettings] = useState<GithubSettings | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [folders, setFolders] = useState<StoredFolder[]>([])
@@ -184,6 +187,18 @@ export default function App() {
       setConflicts(conflicts.filter((c) => c.id !== conflict.id))
     }
     await refreshPendingCount()
+  }
+
+  if (!unlocked) {
+    return (
+      <AppLock
+        checkPassword={checkPassword}
+        onUnlock={() => {
+          setUnlocked()
+          setUnlockedState(true)
+        }}
+      />
+    )
   }
 
   if (!settingsLoaded) return null
