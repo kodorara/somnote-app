@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './db'
-import { createFolder, deleteFolder, moveFolder, topFolder } from './folders'
+import { createFolder, deleteFolder, reorderFolders, topFolder } from './folders'
 
 beforeEach(async () => {
   await db.folders.clear()
@@ -53,34 +53,23 @@ describe('deleteFolder', () => {
   })
 })
 
-describe('moveFolder', () => {
+describe('reorderFolders', () => {
   const folders = [
     { folderId: 'a', name: 'A', color: '#000', seq: 0 },
     { folderId: 'b', name: 'B', color: '#000', seq: 1 },
     { folderId: 'c', name: 'C', color: '#000', seq: 2 },
   ]
 
-  it('swaps seq with the previous folder when moving up', () => {
-    const result = moveFolder(folders, 'b', 'up')
+  it('reassigns seq 0..n-1 in the order given', () => {
+    const result = reorderFolders(folders, ['b', 'c', 'a'])
     expect(result.find((f) => f.folderId === 'b')?.seq).toBe(0)
-    expect(result.find((f) => f.folderId === 'a')?.seq).toBe(1)
-    expect(result.find((f) => f.folderId === 'c')?.seq).toBe(2) // 無関係なフォルダは変化しない
+    expect(result.find((f) => f.folderId === 'c')?.seq).toBe(1)
+    expect(result.find((f) => f.folderId === 'a')?.seq).toBe(2)
   })
 
-  it('swaps seq with the next folder when moving down', () => {
-    const result = moveFolder(folders, 'a', 'down')
-    expect(result.find((f) => f.folderId === 'a')?.seq).toBe(1)
-    expect(result.find((f) => f.folderId === 'b')?.seq).toBe(0)
-  })
-
-  it('does nothing when moving the topmost folder up', () => {
-    const result = moveFolder(folders, 'a', 'up')
-    expect(result).toEqual(folders)
-  })
-
-  it('does nothing when moving the bottommost folder down', () => {
-    const result = moveFolder(folders, 'c', 'down')
-    expect(result).toEqual(folders)
+  it('ignores an id that is not in the folder list', () => {
+    const result = reorderFolders(folders, ['b', 'does-not-exist', 'a', 'c'])
+    expect(result.map((f) => f.folderId)).toEqual(['b', 'a', 'c'])
   })
 })
 

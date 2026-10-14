@@ -5,7 +5,7 @@ import { getGithubSettings, saveGithubSettings, type GithubSettings } from './li
 import { buildIndex, search } from './lib/search'
 import { fullSync } from './lib/fullSync'
 import { pushFolders } from './lib/folderSync'
-import { createFolder, deleteFolder, moveFolder, topFolder } from './lib/folders'
+import { createFolder, deleteFolder, reorderFolders, topFolder } from './lib/folders'
 import * as githubClient from './lib/github'
 import type { ConflictItem } from './lib/sync'
 import { FolderList } from './components/FolderList'
@@ -196,11 +196,9 @@ export default function App() {
     }
   }
 
-  const handleMoveFolder = async (folderId: string, direction: 'up' | 'down') => {
-    const updated = moveFolder(folders, folderId, direction)
-    if (updated === folders) return // 一番上/一番下で動かせない場合は何もしない
-    const changed = updated.filter((f, i) => f.seq !== folders[i]?.seq)
-    await db.folders.bulkPut(changed)
+  const handleReorderFolders = async (orderedIds: string[]) => {
+    const updated = reorderFolders(folders, orderedIds)
+    await db.folders.bulkPut(updated)
     setFolders(updated)
     if (settings && navigator.onLine) {
       try {
@@ -363,7 +361,7 @@ export default function App() {
             }}
             onCreate={handleCreateFolder}
             onDelete={handleDeleteFolder}
-            onMove={handleMoveFolder}
+            onReorder={handleReorderFolders}
           />
         </div>
         <div className="col-notes">

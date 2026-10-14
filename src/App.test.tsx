@@ -246,7 +246,7 @@ describe('startup folder selection', () => {
 })
 
 describe('reordering folders', () => {
-  it('moves a folder up and pushes the updated folders.json', async () => {
+  it('drags a folder above the one before it and pushes the updated folders.json', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
@@ -254,7 +254,13 @@ describe('reordering folders', () => {
     render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
 
-    fireEvent.click(screen.getByLabelText('仕事を上へ'))
+    const rows = screen.getAllByRole('listitem')
+    vi.spyOn(rows[0], 'getBoundingClientRect').mockReturnValue({ top: 0, height: 40 } as DOMRect)
+    vi.spyOn(rows[1], 'getBoundingClientRect').mockReturnValue({ top: 40, height: 40 } as DOMRect)
+    const handle = screen.getByLabelText('仕事をドラッグして並び替え')
+    fireEvent.pointerDown(handle, { pointerId: 1 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 5 }) // 1行目(前ノート)の中点より上まで動かす
+    fireEvent.pointerUp(handle, { pointerId: 1 })
 
     await waitFor(async () => {
       const stored = await db.folders.toArray()

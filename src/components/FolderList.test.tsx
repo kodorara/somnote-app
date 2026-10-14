@@ -7,7 +7,7 @@ const folders = [
   { folderId: '2', name: '仕事', color: '#ff0000', seq: 1 },
 ]
 
-const baseProps = { selectedName: null, onSelect: () => {}, onCreate: () => {}, onDelete: () => {}, onMove: () => {} }
+const baseProps = { selectedName: null, onSelect: () => {}, onCreate: () => {}, onDelete: () => {}, onReorder: () => {} }
 
 describe('FolderList', () => {
   it('renders all folders sorted by seq', () => {
@@ -58,20 +58,33 @@ describe('FolderList', () => {
     expect(onDelete).toHaveBeenCalledWith(folders[1])
   })
 
-  it('calls onMove with the folderId and direction when the up/down buttons are clicked', () => {
-    const onMove = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} onMove={onMove} />)
-    fireEvent.click(screen.getByLabelText('仕事を上へ'))
-    expect(onMove).toHaveBeenCalledWith('2', 'up')
-    fireEvent.click(screen.getByLabelText('前ノートを下へ'))
-    expect(onMove).toHaveBeenCalledWith('1', 'down')
+  it('reorders via drag: dragging the first row past the second row\'s midpoint calls onReorder with the new order', () => {
+    const onReorder = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onReorder={onReorder} />)
+    const rows = screen.getAllByRole('listitem')
+    vi.spyOn(rows[0], 'getBoundingClientRect').mockReturnValue({ top: 0, height: 40 } as DOMRect)
+    vi.spyOn(rows[1], 'getBoundingClientRect').mockReturnValue({ top: 40, height: 40 } as DOMRect)
+
+    const handle = screen.getByLabelText('前ノートをドラッグして並び替え')
+    fireEvent.pointerDown(handle, { pointerId: 1 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 65 }) // 2行目(中点y=60)より下まで動かす
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+
+    expect(onReorder).toHaveBeenCalledWith(['2', '1'])
   })
 
-  it('disables the up button for the first folder and the down button for the last', () => {
-    render(<FolderList {...baseProps} folders={folders} />)
-    expect(screen.getByLabelText('前ノートを上へ')).toBeDisabled()
-    expect(screen.getByLabelText('前ノートを下へ')).not.toBeDisabled()
-    expect(screen.getByLabelText('仕事を上へ')).not.toBeDisabled()
-    expect(screen.getByLabelText('仕事を下へ')).toBeDisabled()
+  it('does not call onReorder when the pointer never crosses another row\'s midpoint', () => {
+    const onReorder = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onReorder={onReorder} />)
+    const rows = screen.getAllByRole('listitem')
+    vi.spyOn(rows[0], 'getBoundingClientRect').mockReturnValue({ top: 0, height: 40 } as DOMRect)
+    vi.spyOn(rows[1], 'getBoundingClientRect').mockReturnValue({ top: 40, height: 40 } as DOMRect)
+
+    const handle = screen.getByLabelText('前ノートをドラッグして並び替え')
+    fireEvent.pointerDown(handle, { pointerId: 1 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 5 }) // 自分の行の中のまま
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+
+    expect(onReorder).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 
 interface Props {
@@ -7,12 +7,75 @@ interface Props {
   onSelect: (folderName: string) => void
   onCreate: (name: string) => void
   onDelete: (folder: StoredFolder) => void
-  onMove: (folderId: string, direction: 'up' | 'down') => void
+  onReorder: (orderedFolderIds: string[]) => void
 }
 
-export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete, onMove }: Props) {
+function GripIcon() {
+  return (
+    <svg className="drag-handle-icon" width="12" height="18" viewBox="0 0 12 18" aria-hidden="true">
+      {[2, 8, 14].map((cy) => (
+        <g key={cy}>
+          <circle cx="3" cy={cy} r="1.4" fill="currentColor" />
+          <circle cx="9" cy={cy} r="1.4" fill="currentColor" />
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete, onReorder }: Props) {
   const [newName, setNewName] = useState('')
-  const sorted = [...folders].sort((a, b) => a.seq - b.seq)
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null)
+  const draggingId = useRef<string | null>(null)
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
+
+  const byId = new Map(folders.map((f) => [f.folderId, f]))
+  const baseOrder = [...folders].sort((a, b) => a.seq - b.seq).map((f) => f.folderId)
+  const order = dragOrder ?? baseOrder
+
+  // ドラッグ中、指/カーソルが各フォルダ行の中点より上にあるかどうかで
+  // 挿入位置を決める(各行の実測位置を見るため、見た目の行高さに依存しない)。
+  const startDrag = (e: ReactPointerEvent<HTMLButtonElement>, folderId: string) => {
+    e.preventDefault()
+    draggingId.current = folderId
+    setDragOrder(baseOrder)
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // 一部環境(テスト用jsdom等)ではPointer Capture未実装のため無視する
+    }
+  }
+
+  const moveDrag = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const id = draggingId.current
+    const currentOrder = dragOrder
+    if (!id || !currentOrder) return
+
+    let targetIndex = currentOrder.length - 1
+    for (let i = 0; i < currentOrder.length; i++) {
+      const el = rowRefs.current.get(currentOrder[i])
+      if (!el) continue
+      const rect = el.getBoundingClientRect()
+      if (e.clientY < rect.top + rect.height / 2) {
+        targetIndex = i
+        break
+      }
+    }
+
+    const fromIndex = currentOrder.indexOf(id)
+    if (fromIndex === -1 || fromIndex === targetIndex) return
+    const next = [...currentOrder]
+    next.splice(fromIndex, 1)
+    next.splice(targetIndex, 0, id)
+    setDragOrder(next)
+  }
+
+  const endDrag = () => {
+    const changed = dragOrder && dragOrder.some((id, i) => id !== baseOrder[i])
+    if (draggingId.current && changed) onReorder(dragOrder)
+    draggingId.current = null
+    setDragOrder(null)
+  }
 
   const submitCreate = () => {
     const trimmed = newName.trim()
@@ -24,47 +87,50 @@ export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete
   return (
     <div className="folder-list-wrap">
       <ul className="folder-list">
-        {sorted.map((f, i) => (
-          <li key={f.folderId} role="listitem">
-            <div className="folder-move-btns">
+        {order.map((id) => {
+          const f = byId.get(id)
+          if (!f) return null
+          return (
+            <li
+              key={f.folderId}
+              ref={(el) => {
+                if (el) rowRefs.current.set(f.folderId, el)
+                else rowRefs.current.delete(f.folderId)
+              }}
+              role="listitem"
+              className={draggingId.current === f.folderId ? 'is-dragging' : undefined}
+            >
               <button
                 type="button"
-                className="folder-move-btn"
-                aria-label={`${f.name}を上へ`}
-                disabled={i === 0}
-                onClick={() => onMove(f.folderId, 'up')}
+                className="folder-drag-handle"
+                aria-label={`${f.name}をドラッグして並び替え`}
+                onPointerDown={(e) => startDrag(e, f.folderId)}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
               >
-                ▲
+                <GripIcon />
               </button>
               <button
                 type="button"
-                className="folder-move-btn"
-                aria-label={`${f.name}を下へ`}
-                disabled={i === sorted.length - 1}
-                onClick={() => onMove(f.folderId, 'down')}
+                className="folder-select-btn"
+                aria-current={f.name === selectedName}
+                onClick={() => onSelect(f.name)}
               >
-                ▼
+                <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
+                {f.name}
               </button>
-            </div>
-            <button
-              type="button"
-              className="folder-select-btn"
-              aria-current={f.name === selectedName}
-              style={{ borderLeft: `4px solid ${f.color}` }}
-              onClick={() => onSelect(f.name)}
-            >
-              {f.name}
-            </button>
-            <button
-              type="button"
-              className="folder-delete-btn"
-              aria-label={`${f.name}を削除`}
-              onClick={() => onDelete(f)}
-            >
-              ×
-            </button>
-          </li>
-        ))}
+              <button
+                type="button"
+                className="folder-delete-btn"
+                aria-label={`${f.name}を削除`}
+                onClick={() => onDelete(f)}
+              >
+                ×
+              </button>
+            </li>
+          )
+        })}
       </ul>
       <div className="folder-create-form">
         <input
