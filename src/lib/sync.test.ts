@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { planSync, runSync } from './sync'
+import { GithubApiError } from './github'
 import type { StoredNote } from './db'
 
 function note(overrides: Partial<StoredNote>): StoredNote {
@@ -148,6 +149,38 @@ describe('runSync', () => {
     // 最初のバッチ(n0〜n11, 並列度12)は例外発生前に完了しコールバックに渡されているはず
     expect(persistedIds).toEqual(expect.arrayContaining(['n0', 'n1', 'n11']))
     expect(persistedIds).not.toContain('n19')
+  })
+
+  it('recovers from a 422 "sha not supplied" on a new-note push by fetching the current sha and retrying', async () => {
+    // モバイル回線の瞬断等で前回のpushレスポンスだけ失われ、baseShaがnullのまま
+    // リモートには既にファイルが作成済みのケースを再現する
+    const localNotes = [note({ id: 'a', dirty: true, baseSha: null, folder: 'f' })]
+    const shaMissingError = new GithubApiError('putContent failed: 422 - Invalid request. "sha" wasn\'t supplied.', 422, 'Invalid request. "sha" wasn\'t supplied.')
+    const github = {
+      putContent: vi.fn()
+        .mockRejectedValueOnce(shaMissingError)
+        .mockResolvedValueOnce({ content: { sha: 'recovered-sha' } }),
+      getContent: vi.fn().mockResolvedValue({ sha: 'current-remote-sha', content: '' }),
+    }
+    const result = await runSync(localNotes, [], github)
+
+    expect(github.getContent).toHaveBeenCalledWith('f', 'a')
+    expect(github.putContent).toHaveBeenNthCalledWith(2, 'f', 'a', expect.anything(), 'current-remote-sha')
+    const updated = result.updated.find((n) => n.id === 'a')
+    expect(updated?.dirty).toBe(false)
+    expect(updated?.baseSha).toBe('recovered-sha')
+  })
+
+  it('does not retry a 422 when baseSha was already set (a genuine conflict, not a lost-response case)', async () => {
+    const localNotes = [note({ id: 'a', dirty: true, baseSha: 'sha1', folder: 'f' })]
+    const shaMissingError = new GithubApiError('putContent failed: 422 - Invalid request. "sha" wasn\'t supplied.', 422, 'Invalid request. "sha" wasn\'t supplied.')
+    const github = {
+      putContent: vi.fn().mockRejectedValue(shaMissingError),
+      getContent: vi.fn(),
+    }
+
+    await expect(runSync(localNotes, [{ path: 'notes/f/a.md', sha: 'sha1' }], github)).rejects.toThrow('422')
+    expect(github.getContent).not.toHaveBeenCalled()
   })
 
   it('reassigns seq within a folder by createdAt ascending after sync', async () => {

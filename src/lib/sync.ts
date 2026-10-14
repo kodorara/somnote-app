@@ -2,6 +2,7 @@ import type { StoredNote } from './db'
 import type { TreeEntry } from './github'
 import type { Note } from './frontmatter'
 import { serializeNote, parseNote } from './frontmatter'
+import { GithubApiError } from './github'
 
 export interface PullTarget {
   id: string
@@ -75,6 +76,28 @@ export interface GithubLike {
   getContent: (folder: string, id: string) => Promise<{ sha: string; content: string }>
 }
 
+// baseSha===nullでのpush(新規作成)は、直前の試行がモバイル回線の瞬断等でレスポンスだけ
+// 失われ、実際にはGitHub側で作成が成功しているケースがありうる。その場合GitHubは
+// 「ファイルは既に存在するのにshaが無い」として422 "sha" wasn't supplied を返す。
+// これを検知したら現在のリモートshaを取得し、更新として1回だけ再送して自己修復する。
+function isShaMissingError(err: unknown): err is GithubApiError {
+  return err instanceof GithubApiError && err.status === 422 && err.githubMessage.includes('sha')
+}
+
+async function pushNote(
+  github: GithubLike,
+  n: StoredNote,
+  content: string,
+): Promise<{ content: { sha: string } }> {
+  try {
+    return await github.putContent(n.folder, n.id, content, n.baseSha)
+  } catch (err) {
+    if (n.baseSha !== null || !isShaMissingError(err)) throw err
+    const current = await github.getContent(n.folder, n.id)
+    return github.putContent(n.folder, n.id, content, current.sha)
+  }
+}
+
 // 読み取り(GET)はGitHubのセカンダリレート制限(書き込み系のみ対象)の影響を受けないため、
 // 初回全件インポートのような大量pullを現実的な時間で終えるには並列化が要る。
 // 逐次1件ずつだと5,000件超で数十分かかり、UI上「固まっている」ように見えてしまう。
@@ -103,7 +126,7 @@ export async function runSync(
     const n = byId.get(id)
     if (!n) continue
     const content = serializeNote(n)
-    const res = await github.putContent(n.folder, n.id, content, n.baseSha)
+    const res = await pushNote(github, n, content)
     n.dirty = false
     n.baseSha = res.content.sha
   }

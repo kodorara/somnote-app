@@ -21,10 +21,25 @@ function headers(token: string): Record<string, string> {
   }
 }
 
+// ステータスコードとGitHub側のmessageを構造化して保持するエラー。sync.ts側で
+// 「baseSha=nullでpushしたら422 sha not supplied」のような特定ケースを判別し、
+// 自動リカバリ(現在のshaを取得して再送)するために使う。
+export class GithubApiError extends Error {
+  status: number
+  githubMessage: string
+
+  constructor(message: string, status: number, githubMessage: string) {
+    super(message)
+    this.name = 'GithubApiError'
+    this.status = status
+    this.githubMessage = githubMessage
+  }
+}
+
 // GitHubはレート制限・権限不足・単純なパスの誤りをいずれも403/404で返すことがあり、
 // ステータスコードだけでは原因が分からない。レスポンス本文の"message"とレート制限の
 // 残量ヘッダーを合わせて表示することで、ユーザーが原因を判断できるようにする。
-async function describeError(prefix: string, res: Response): Promise<string> {
+async function describeError(prefix: string, res: Response): Promise<GithubApiError> {
   const remaining = res.headers.get('x-ratelimit-remaining')
   const reset = res.headers.get('x-ratelimit-reset')
   let body = ''
@@ -38,7 +53,7 @@ async function describeError(prefix: string, res: Response): Promise<string> {
     remaining !== null
       ? ` (レート制限残り${remaining}回${reset ? `, リセット: ${new Date(Number(reset) * 1000).toLocaleString('ja-JP')}` : ''})`
       : ''
-  return `${prefix} failed: ${res.status}${body ? ` - ${body}` : ''}${rateInfo}`
+  return new GithubApiError(`${prefix} failed: ${res.status}${body ? ` - ${body}` : ''}${rateInfo}`, res.status, body)
 }
 
 // pathは "notes/前ノート/a.md" のようにスラッシュを含む。encodeURIComponent(path)を
@@ -63,7 +78,7 @@ export async function getTree(
   const res = await fetch(`${API}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, {
     headers: headers(token),
   })
-  if (!res.ok) throw new Error(await describeError('getTree', res))
+  if (!res.ok) throw await describeError('getTree', res)
   return res.json() as Promise<{ tree: TreeEntry[]; truncated: boolean }>
 }
 
@@ -76,7 +91,7 @@ export async function getContent(
   const res = await fetch(`${API}/repos/${owner}/${repo}/contents/${encodePath(path)}`, {
     headers: headers(token),
   })
-  if (!res.ok) throw new Error(await describeError('getContent', res))
+  if (!res.ok) throw await describeError('getContent', res)
   const data = await res.json()
   return { sha: data.sha as string, content: decodeUtf8Base64(data.content as string) }
 }
@@ -98,6 +113,6 @@ export async function putContent(
       ...(baseSha ? { sha: baseSha } : {}),
     }),
   })
-  if (!res.ok) throw new Error(await describeError('putContent', res))
+  if (!res.ok) throw await describeError('putContent', res)
   return res.json() as Promise<{ content: { sha: string } }>
 }
