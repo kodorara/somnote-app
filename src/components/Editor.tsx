@@ -6,10 +6,23 @@ interface Props {
   body: string
   onChange: (body: string) => void
   highlightQuery?: string
+  mode?: 'edit' | 'preview'
+  onModeChange?: (mode: 'edit' | 'preview') => void
+  hideToolbar?: boolean
 }
 
-export function Editor({ body, onChange, highlightQuery }: Props) {
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+export function Editor({ body, onChange, highlightQuery, mode: externalMode, onModeChange, hideToolbar }: Props) {
+  const [internalMode, setInternalMode] = useState<'edit' | 'preview'>('edit')
+  const currentMode = externalMode !== undefined ? externalMode : internalMode
+
+  const toggleMode = () => {
+    const next = currentMode === 'edit' ? 'preview' : 'edit'
+    if (onModeChange) {
+      onModeChange(next)
+    } else {
+      setInternalMode(next)
+    }
+  }
 
   const markdownComponents = useMemo(() => {
     const query = highlightQuery?.trim() ?? ''
@@ -44,12 +57,14 @@ export function Editor({ body, onChange, highlightQuery }: Props) {
 
   return (
     <div className="editor">
-      <div className="editor-toolbar">
-        <button type="button" className="btn btn-ghost" onClick={() => setMode(mode === 'edit' ? 'preview' : 'edit')}>
-          {mode === 'edit' ? 'プレビュー' : '編集'}
-        </button>
-      </div>
-      {mode === 'edit' ? (
+      {!hideToolbar && (
+        <div className="editor-toolbar">
+          <button type="button" className="btn btn-ghost" onClick={toggleMode}>
+            {currentMode === 'edit' ? 'プレビュー' : '編集'}
+          </button>
+        </div>
+      )}
+      {currentMode === 'edit' ? (
         <textarea aria-label="本文" value={body} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <div className="preview">

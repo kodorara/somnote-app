@@ -31,5 +31,17 @@ describe('Editor', () => {
     expect(mark).toBeInTheDocument()
     expect(mark?.textContent).toBe('哲学')
   })
+
+  it('hides toolbar when hideToolbar is true and respects external mode', () => {
+    const onModeChange = vi.fn()
+    const { rerender } = render(
+      <Editor body="# タイトル" onChange={() => {}} mode="preview" hideToolbar onModeChange={onModeChange} />,
+    )
+    expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('タイトル')
+
+    rerender(<Editor body="# タイトル" onChange={() => {}} mode="edit" hideToolbar onModeChange={onModeChange} />)
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+  })
 })
 

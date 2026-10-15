@@ -87,4 +87,18 @@ describe('LlmLinkPanel', () => {
       'https://chatgpt.com/c/yyy',
     )
   })
+
+  it('respects external isOpen and calls onClose when closed', () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <LlmLinkPanel body="x" links={[]} onAddLink={() => {}} isOpen={false} onClose={onClose} />,
+    )
+    expect(screen.queryByRole('button', { name: /LLM連携/ })).not.toBeInTheDocument()
+
+    rerender(<LlmLinkPanel body="x" links={[]} onAddLink={() => {}} isOpen={true} onClose={onClose} />)
+    expect(screen.getByRole('button', { name: 'Claudeへ' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'LLM連携を閉じる' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

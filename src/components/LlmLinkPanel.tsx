@@ -5,6 +5,8 @@ interface Props {
   body: string
   links: LlmLink[]
   onAddLink: (url: string, memo: string) => void
+  isOpen?: boolean
+  onClose?: () => void
 }
 
 const LLM_TARGETS = [
@@ -13,8 +15,9 @@ const LLM_TARGETS = [
   { name: 'Gemini', url: 'https://gemini.google.com/app' },
 ]
 
-export function LlmLinkPanel({ body, links, onAddLink }: Props) {
-  const [expanded, setExpanded] = useState(false)
+export function LlmLinkPanel({ body, links, onAddLink, isOpen, onClose }: Props) {
+  const [internalExpanded, setInternalExpanded] = useState(false)
+  const isExpanded = isOpen !== undefined ? isOpen : internalExpanded
   const [url, setUrl] = useState('')
   const [memo, setMemo] = useState('')
 
@@ -32,9 +35,21 @@ export function LlmLinkPanel({ body, links, onAddLink }: Props) {
     setMemo('')
   }
 
-  if (!expanded) {
+  const handleClose = () => {
+    if (onClose) {
+      onClose()
+    } else {
+      setInternalExpanded(false)
+    }
+  }
+
+  if (!isExpanded) {
+    if (isOpen !== undefined) {
+      // 外部制御されている場合は折りたたみボタンは表示しない
+      return null
+    }
     return (
-      <button type="button" className="btn btn-ghost llm-panel-toggle" onClick={() => setExpanded(true)}>
+      <button type="button" className="btn btn-ghost llm-panel-toggle" onClick={() => setInternalExpanded(true)}>
         LLM連携{links.length > 0 ? `(${links.length})` : ''}
       </button>
     )
@@ -42,7 +57,7 @@ export function LlmLinkPanel({ body, links, onAddLink }: Props) {
 
   return (
     <div className="llm-link-panel">
-      <button type="button" className="btn btn-ghost llm-panel-toggle" onClick={() => setExpanded(false)}>
+      <button type="button" className="btn btn-ghost llm-panel-toggle" onClick={handleClose}>
         LLM連携を閉じる
       </button>
       <div className="llm-buttons">

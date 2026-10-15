@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { db } from './lib/db'
 import * as githubClient from './lib/github'
@@ -84,29 +84,49 @@ describe('App startup', () => {
   })
 })
 
-describe('mobile back navigation', () => {
-  it('shows a back button on startup (editor is the initial mobile screen) and steps back to notes then folders', async () => {
+describe('mobile swipe navigation', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+  const swipeLeft = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
+  }
+
+  it('swipes right from editor to notes, and from notes to folders; swipes left to return', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     const { container } = render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
 
-    // 起動直後はエディタ画面(スマホではここだけが見えている)なので、戻るボタンが出ているはず
-    const backButton = screen.getByRole('button', { name: '← 戻る' })
+    const swipeContainer = screen.getByTestId('swipe-container')
     expect(container.querySelector('.columns')).toHaveClass('mobile-editor')
 
-    fireEvent.click(backButton)
+    // 右スワイプでエディタからノート一覧へ
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
-    expect(screen.getByRole('button', { name: '← 戻る' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    // 再度右スワイプでノート一覧からフォルダ一覧へ
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
-    // フォルダ画面まで戻ったら、それ以上戻る先がないのでボタンは消える
-    expect(screen.queryByRole('button', { name: '← 戻る' })).not.toBeInTheDocument()
+
+    // 左スワイプでフォルダ一覧からノート一覧へ
+    swipeLeft(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    // 左スワイプでノート一覧からエディタへ
+    swipeLeft(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
   })
 })
 
-describe('creating a new note after navigating back', () => {
+describe('creating a new note after navigating back via swipe', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+
   it('opens a fresh empty draft when "+ 新規作成" is clicked from the note list', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.notes.put({
@@ -120,16 +140,17 @@ describe('creating a new note after navigating back', () => {
 
     const { container } = render(<App />)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
-    // 起動直後の空ドラフトを離れ、一覧→既存メモを開く(新規作成ボタンのテストのため一覧画面へ)
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    const swipeContainer = screen.getByTestId('swipe-container')
+
+    // 右スワイプでノート一覧へ
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
 
     fireEvent.click(await screen.findByText('既存メモ'))
     await screen.findByDisplayValue('既存の本文')
 
-    // 一覧へ戻り、「+ 新規作成」で新しい空メモを開けること
-
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    // 一覧へ右スワイプで戻り、「+ 新規作成」で新しい空メモを開けること
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
     fireEvent.click(screen.getByRole('button', { name: '+ 新規作成' }))
 
@@ -228,6 +249,10 @@ describe('autosave and departure save', () => {
 })
 
 describe('folder management', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
 
   it('creates a folder and pushes folders.json to GitHub', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
@@ -236,8 +261,9 @@ describe('folder management', () => {
     const { container } = render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
 
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' })) // -> notes
-    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' })) // -> folders
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer) // -> notes
+    swipeRight(swipeContainer) // -> folders
     await screen.findByLabelText('新しいフォルダ名')
 
     fireEvent.change(screen.getByLabelText('新しいフォルダ名'), { target: { value: '趣味' } })
@@ -253,6 +279,11 @@ describe('folder management', () => {
   })
 
   it('refuses to delete a non-empty folder and shows the reason', async () => {
+    const swipeRight = (el: Element) => {
+      fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+      fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+    }
+
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.notes.put({
       id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
@@ -264,8 +295,10 @@ describe('folder management', () => {
     })
     render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
-    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    swipeRight(swipeContainer)
     await screen.findByLabelText('前ノートを削除')
 
     fireEvent.click(screen.getByLabelText('前ノートを削除'))
@@ -277,6 +310,11 @@ describe('folder management', () => {
 
 describe('moving a note to a different folder', () => {
   it('removes the note from the current folder view and switches to the notes screen', async () => {
+    const swipeRight = (el: Element) => {
+      fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+      fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+    }
+
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
     await db.notes.put({
@@ -288,16 +326,15 @@ describe('moving a note to a different folder', () => {
       tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
     })
     const { container } = render(<App />)
-    // 起動直後の新規ドラフトが完全に整うのを待ってから操作する(ドラフト生成の
-    // 非同期処理がまだ途中のまま次の操作に進むと、まれにナビゲーションが
-    // 取りこぼされることがあったため、本文が空であることまで確認しておく)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
     fireEvent.click(await screen.findByText('タイトル'))
     await screen.findByDisplayValue('本文')
 
-    fireEvent.change(screen.getByLabelText('フォルダ移動'), { target: { value: '仕事' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'フォルダ移動' }), { target: { value: '仕事' } })
 
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
     const moved = await db.notes.get('n1')
@@ -307,6 +344,11 @@ describe('moving a note to a different folder', () => {
   })
 
   it('resets search filter so all notes in the new folder are displayed after moving', async () => {
+    const swipeRight = (el: Element) => {
+      fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+      fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+    }
+
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
     await db.notes.put({
@@ -329,20 +371,24 @@ describe('moving a note to a different folder', () => {
     const { container } = render(<App />)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
 
+    const notesSearchInput = screen.getByPlaceholderText('"前ノート"内を検索')
+
     // 検索窓に「キーワードA」を入力して検索を実行
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'キーワードA' } })
+    fireEvent.change(notesSearchInput, { target: { value: 'キーワードA' } })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
 
     // n1を開いて「仕事」フォルダに移動
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
     fireEvent.click(await screen.findByText('移動するメモ'))
     await screen.findByDisplayValue('キーワードA')
 
-    fireEvent.change(screen.getByLabelText('フォルダ移動'), { target: { value: '仕事' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'フォルダ移動' }), { target: { value: '仕事' } })
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
 
-    // 「← 戻る」でフォルダ一覧に戻り、「仕事」フォルダを選択
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    // スワイプでフォルダ一覧に戻り、「仕事」フォルダを選択
+    swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
     fireEvent.click(await screen.findByRole('button', { name: '仕事' }))
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
@@ -350,7 +396,7 @@ describe('moving a note to a different folder', () => {
     // 検索状態がリセットされているため、仕事フォルダ内の全メモ(n1, n2)が表示されること
     expect(await screen.findByText('移動するメモ')).toBeInTheDocument()
     expect(await screen.findByText('仕事の既存メモ')).toBeInTheDocument()
-    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.getByPlaceholderText('"仕事"内を検索')).toHaveValue('')
   })
 })
 
@@ -419,8 +465,10 @@ describe('search integration', () => {
     render(<App />)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
 
+    const notesSearchInput = screen.getByPlaceholderText('"前ノート"内を検索')
+
     // 検索窓に「哲学」を入力
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '哲学' } })
+    fireEvent.change(notesSearchInput, { target: { value: '哲学' } })
 
     // デバウンス待機後、読書メモのみが表示され、散歩の日記は非表示になること
     await waitFor(() => {
@@ -439,7 +487,7 @@ describe('search integration', () => {
     expect(previewMark?.textContent).toBe('哲学')
 
     // 検索窓をクリアすると両方表示されること
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } })
+    fireEvent.change(notesSearchInput, { target: { value: '' } })
     await waitFor(() => {
       expect(screen.getByText('散歩の日記')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /哲学の読書メモ/ })).toBeInTheDocument()
@@ -447,6 +495,11 @@ describe('search integration', () => {
   })
 
   it('searches across all folders when initiated from folders screen', async () => {
+    const swipeRight = (el: Element) => {
+      fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+      fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+    }
+
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
     await db.notes.put({
@@ -466,19 +519,24 @@ describe('search integration', () => {
       ],
       truncated: false,
     })
-    render(<App />)
+    const { container } = render(<App />)
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
 
-    // フォルダ画面(folders)まで戻る
-    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
-    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    const swipeContainer = screen.getByTestId('swipe-container')
+
+    // スワイプでフォルダ画面(folders)まで戻る
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
     await screen.findByLabelText('新しいフォルダ名')
 
     // フォルダ一覧画面での検索プレースホルダーは「全メモを検索」
-    expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', '全メモを検索')
+    const foldersSearchInput = screen.getByPlaceholderText('全メモを検索')
+    expect(foldersSearchInput).toBeInTheDocument()
 
     // 検索窓に「ロードマップ」(仕事フォルダのメモ)を入力
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ロードマップ' } })
+    fireEvent.change(foldersSearchInput, { target: { value: 'ロードマップ' } })
 
     // 全フォルダ横断で検索され、一覧画面に「プロジェクト計画」が表示されること
     expect(await screen.findByText('プロジェクト計画')).toBeInTheDocument()
@@ -487,7 +545,82 @@ describe('search integration', () => {
     // クリックすると仕事フォルダのメモが開かれること
     fireEvent.click(screen.getByText('プロジェクト計画'))
     await screen.findByDisplayValue('来期のロードマップ')
-    expect(screen.getByLabelText('フォルダ移動')).toHaveValue('仕事')
+    expect(screen.getByRole('combobox', { name: 'フォルダ移動' })).toHaveValue('仕事')
+  })
+})
+
+describe('pull to refresh and editor action bar', () => {
+  it('triggers fullSync when pulled down beyond threshold', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    const getTreeSpy = vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+    const initialCallCount = getTreeSpy.mock.calls.length
+
+    const pullContainer = screen.getByTestId('pull-to-refresh')
+
+    // 下にドラッグして離す
+    fireEvent.pointerDown(pullContainer, { clientY: 100 })
+    fireEvent.pointerMove(pullContainer, { clientY: 250 })
+    expect(screen.getByText('離して同期')).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.pointerUp(pullContainer)
+    })
+
+    // fullSync が実行され getTree が再度呼ばれること
+    await waitFor(() => {
+      expect(getTreeSpy.mock.calls.length).toBeGreaterThan(initialCallCount)
+    })
+  })
+
+  it('provides all 6 actions in the editor action bar and operates them correctly', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    // 1. 本文入力 & 保存ボタン
+    fireEvent.change(textarea, { target: { value: 'アクションバーテスト本文' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(async () => {
+      const all = await db.notes.toArray()
+      expect(all.some((n) => n.body === 'アクションバーテスト本文')).toBe(true)
+    })
+
+    // 2. メモ内検索トグル
+    fireEvent.click(screen.getByRole('button', { name: 'メモ内を検索' }))
+    const editorSearchInput = screen.getByRole('searchbox', { name: '本文内を検索' })
+    expect(editorSearchInput).toBeInTheDocument()
+    fireEvent.change(editorSearchInput, { target: { value: 'アクション' } })
+
+    // 3. プレビュー切替 & ハイライト確認
+    fireEvent.click(screen.getByRole('button', { name: 'プレビュー' }))
+    const mark = document.querySelector('.preview mark.search-highlight')
+    expect(mark).toBeInTheDocument()
+    expect(mark?.textContent).toBe('アクション')
+
+    // 再度プレビューボタン（編集アイコン）を押して編集モードに戻る
+    fireEvent.click(screen.getByRole('button', { name: '編集' }))
+    expect(screen.getByRole('textbox', { name: '本文' })).toBeInTheDocument()
+
+    // 4. LLM連携トグル
+    fireEvent.click(screen.getByRole('button', { name: 'LLM連携' }))
+    expect(screen.getByRole('button', { name: 'Claudeへ' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'LLM連携を閉じる' }))
+    expect(screen.queryByRole('button', { name: 'Claudeへ' })).not.toBeInTheDocument()
+
+    // 5. フォルダ移動
+    fireEvent.change(screen.getByRole('combobox', { name: 'フォルダ移動' }), { target: { value: '仕事' } })
+    await waitFor(async () => {
+      const note = await db.notes.filter((n) => n.body === 'アクションバーテスト本文').first()
+      expect(note?.folder).toBe('仕事')
+    })
+
+    // 移動後はノート一覧画面に遷移していること
+    const container = document.querySelector('.columns')
+    expect(container).toHaveClass('mobile-notes')
   })
 })
 

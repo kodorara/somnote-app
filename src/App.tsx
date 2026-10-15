@@ -14,7 +14,9 @@ import { NoteListControls } from './components/NoteListControls'
 import { Editor } from './components/Editor'
 import { SearchBar } from './components/SearchBar'
 import { LlmLinkPanel } from './components/LlmLinkPanel'
-import { SyncStatusBadge } from './components/SyncStatusBadge'
+import { EditorActionBar } from './components/EditorActionBar'
+import { SwipeContainer } from './components/SwipeContainer'
+import { PullToRefresh } from './components/PullToRefresh'
 import { ConflictResolver } from './components/ConflictResolver'
 import { Settings } from './components/Settings'
 import { AppLock } from './components/AppLock'
@@ -33,10 +35,13 @@ export default function App() {
   const [activeNote, setActiveNote] = useState<StoredNote | null>(null)
   const [mobileScreen, setMobileScreen] = useState<MobileScreen>('editor')
   const [online, setOnline] = useState(navigator.onLine)
-  const [pendingCount, setPendingCount] = useState(0)
   const [conflicts, setConflicts] = useState<ConflictItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
+  const [editorSearchQuery, setEditorSearchQuery] = useState('')
+  const [editorPreviewMode, setEditorPreviewMode] = useState<'edit' | 'preview'>('edit')
+  const [isLlmOpen, setIsLlmOpen] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortBy>('createdDesc')
@@ -47,14 +52,24 @@ export default function App() {
   const searchIndexRef = useRef<SearchIndex | null>(null)
 
   useEffect(() => {
+    const handleOnline = () => setOnline(true)
+    const handleOffline = () => setOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  useEffect(() => {
     const s = getGithubSettings()
     setSettings(s)
     setSettingsLoaded(true)
   }, [])
 
   const refreshPendingCount = async () => {
-    const all = await db.notes.toArray()
-    setPendingCount(all.filter((n) => n.dirty).length)
+    // 互換性維持
   }
 
   const rebuildSearchIndex = async () => {
@@ -237,6 +252,9 @@ export default function App() {
     if (!shouldDiscardDraft(activeNote.body) || notes.some((n) => n.id === activeNote.id)) {
       await saveNote(activeNote)
     }
+    setEditorSearchQuery('')
+    setIsLlmOpen(false)
+    setEditorPreviewMode('edit')
   }
 
   const deleteActiveNote = async () => {
@@ -251,7 +269,15 @@ export default function App() {
     await refreshPendingCount()
   }
 
-  const goBack = async () => {
+  const handleSwipeLeft = () => {
+    if (mobileScreen === 'folders') {
+      setMobileScreen('notes')
+    } else if (mobileScreen === 'notes' && activeNote) {
+      setMobileScreen('editor')
+    }
+  }
+
+  const handleSwipeRight = async () => {
     resetSearch()
     if (mobileScreen === 'editor') {
       await leaveEditor()
@@ -347,13 +373,7 @@ export default function App() {
     }
   }
 
-  const searchPlaceholder = useMemo(() => {
-    if (mobileScreen === 'folders') return '全メモを検索'
-    if (mobileScreen === 'notes') return selectedFolder ? `"${selectedFolder}"内を検索` : 'フォルダ内を検索'
-    return '本文内を検索'
-  }, [mobileScreen, selectedFolder])
-
-  const runSearch = async (query: string) => {
+  const runGlobalSearch = async (query: string) => {
     setSearchQuery(query)
     if (!query) {
       setSearchResultIds(null)
@@ -367,18 +387,36 @@ export default function App() {
     }
     const matchedIds = search(searchIndexRef.current, query)
     const idSet = new Set(matchedIds)
+    const all = await db.notes.toArray()
+    const results = all.filter((n) => !n.deleted && idSet.has(n.id))
+    setGlobalSearchResults(results)
+    setSearchResultIds(matchedIds)
+    setMobileScreen('notes')
+  }
 
-    if (mobileScreen === 'folders') {
-      // フォルダ一覧画面: 全メモ対象 (全フォルダ横断検索)
-      const all = await db.notes.toArray()
-      const results = all.filter((n) => !n.deleted && idSet.has(n.id))
-      setGlobalSearchResults(results)
-      setSearchResultIds(matchedIds)
-      setMobileScreen('notes')
-    } else {
-      // フォルダ画面 / エディタ画面
+  const runFolderSearch = async (query: string) => {
+    setSearchQuery(query)
+    if (!query) {
+      setSearchResultIds(null)
       setGlobalSearchResults(null)
-      setSearchResultIds(matchedIds)
+      return
+    }
+    if (!searchIndexRef.current) {
+      setSearchResultIds([])
+      setGlobalSearchResults(null)
+      return
+    }
+    const matchedIds = search(searchIndexRef.current, query)
+    setGlobalSearchResults(null)
+    setSearchResultIds(matchedIds)
+  }
+
+  const handlePullToRefresh = async () => {
+    setIsSyncing(true)
+    try {
+      await handleSyncNow()
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -460,129 +498,138 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="topbar">
-        {mobileScreen !== 'folders' && (
-          <button type="button" className="btn btn-ghost mobile-only" onClick={goBack}>
-            ← 戻る
-          </button>
+      <PullToRefresh onRefresh={handlePullToRefresh} isRefreshing={isSyncing} disabled={!online}>
+        {syncProgress && (
+          <p className="sync-progress">
+            同期中... {syncProgress.done}/{syncProgress.total}件
+          </p>
         )}
-        <SearchBar
-          key={searchResetKey}
-          value={searchQuery}
-          placeholder={searchPlaceholder}
-          onQueryChange={runSearch}
-        />
-
-        <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
-      </div>
-      {syncProgress && (
-        <p className="sync-progress">
-          同期中... {syncProgress.done}/{syncProgress.total}件
-        </p>
-      )}
-      {syncError && <p className="sync-error">同期エラー: {syncError}(ここまでの分は保存済みです)</p>}
-      {conflicts.length > 0 && (
-        <ConflictResolver
-          localBody={conflicts[0].localBody}
-          remoteBody={conflicts[0].remoteBody}
-          onResolve={(choice) => resolveConflict(conflicts[0], choice)}
-        />
-      )}
-      <div className={`columns mobile-${mobileScreen}`}>
-        <div className="col-folders">
-          {folderError && <p className="folder-error">{folderError}</p>}
-          <FolderList
-            folders={folders}
-            selectedName={selectedFolder}
-            onSelect={async (name) => {
-              await leaveEditor()
-              resetSearch()
-              setSelectedFolder(name)
-              setNotes(await db.notes.where('folder').equals(name).toArray())
-              setWordFilter('')
-              setTagFilter(null)
-              setMobileScreen('notes')
-            }}
-            onCreate={handleCreateFolder}
-            onDelete={handleDeleteFolder}
-            onReorder={handleReorderFolders}
+        {syncError && <p className="sync-error">同期エラー: {syncError}(ここまでの分は保存済みです)</p>}
+        {conflicts.length > 0 && (
+          <ConflictResolver
+            localBody={conflicts[0].localBody}
+            remoteBody={conflicts[0].remoteBody}
+            onResolve={(choice) => resolveConflict(conflicts[0], choice)}
           />
-        </div>
-
-        <div className="col-notes">
-          <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
-            + 新規作成
-          </button>
-          <NoteListControls
-            sortBy={sortBy}
-            onSortByChange={setSortBy}
-            wordFilter={wordFilter}
-            onWordFilterChange={setWordFilter}
-            availableTags={availableTags}
-            tagFilter={tagFilter}
-            onTagFilterChange={setTagFilter}
-          />
-          <NoteList
-            notes={visibleNotes}
-            selectedId={activeNote?.id ?? null}
-            tagFilter={tagFilter}
-            wordFilter={wordFilter}
-            sortBy={sortBy}
-            highlightQuery={searchQuery}
-            onSelect={async (id) => {
-              await leaveEditor()
-              const n = await db.notes.get(id)
-              if (n) {
-                if (selectedFolder !== n.folder) {
-                  setSelectedFolder(n.folder)
-                  setNotes(await db.notes.where('folder').equals(n.folder).toArray())
-                }
-                setActiveNote(n)
-              }
-              setMobileScreen('editor')
-            }}
-          />
-        </div>
-        <div className="col-editor">
-          {activeNote && (
-            <>
-              <Editor body={activeNote.body} onChange={updateBody} highlightQuery={searchQuery} />
-              <div className="editor-actions">
-
-                <button type="button" className="btn btn-primary" onClick={saveActiveNote}>
-                  保存
-                </button>
-                <select
-                  className="input"
-                  aria-label="フォルダ移動"
-                  value={activeNote.folder}
-                  onChange={(e) => moveNoteToFolder(e.target.value)}
-                >
-                  {folders.map((f) => (
-                    <option key={f.folderId} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" className="btn" onClick={deleteActiveNote}>
-                  ゴミ箱に移動
-                </button>
-              </div>
-              <LlmLinkPanel
-                body={activeNote.body}
-                links={activeNote.llmLinks}
-                onAddLink={(url, memo) => {
-                  setActiveNote({
-                    ...activeNote,
-                    llmLinks: [...activeNote.llmLinks, { url, label: memo, addedAt: new Date().toISOString() }],
-                    dirty: true,
-                  })
-                }}
+        )}
+        <SwipeContainer
+          className={`columns mobile-${mobileScreen}`}
+          onSwipeLeft={handleSwipeLeft}
+          onSwipeRight={handleSwipeRight}
+        >
+          <div className="col-folders">
+            <div className="column-search-wrap">
+              <SearchBar
+                key={`folders-${searchResetKey}`}
+                value={searchQuery}
+                placeholder="全メモを検索"
+                onQueryChange={runGlobalSearch}
               />
-            </>
-          )}
-        </div>
-      </div>
+            </div>
+            {folderError && <p className="folder-error">{folderError}</p>}
+            <FolderList
+              folders={folders}
+              selectedName={selectedFolder}
+              onSelect={async (name) => {
+                await leaveEditor()
+                resetSearch()
+                setSelectedFolder(name)
+                setNotes(await db.notes.where('folder').equals(name).toArray())
+                setWordFilter('')
+                setTagFilter(null)
+                setMobileScreen('notes')
+              }}
+              onCreate={handleCreateFolder}
+              onDelete={handleDeleteFolder}
+              onReorder={handleReorderFolders}
+            />
+          </div>
+
+          <div className="col-notes">
+            <div className="column-search-wrap">
+              <SearchBar
+                key={`notes-${searchResetKey}`}
+                value={searchQuery}
+                placeholder={selectedFolder ? `"${selectedFolder}"内を検索` : 'フォルダ内を検索'}
+                onQueryChange={runFolderSearch}
+              />
+            </div>
+            <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
+              + 新規作成
+            </button>
+            <NoteListControls
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              wordFilter={wordFilter}
+              onWordFilterChange={setWordFilter}
+              availableTags={availableTags}
+              tagFilter={tagFilter}
+              onTagFilterChange={setTagFilter}
+            />
+            <NoteList
+              notes={visibleNotes}
+              selectedId={activeNote?.id ?? null}
+              tagFilter={tagFilter}
+              wordFilter={wordFilter}
+              sortBy={sortBy}
+              highlightQuery={searchQuery}
+              onSelect={async (id) => {
+                await leaveEditor()
+                const n = await db.notes.get(id)
+                if (n) {
+                  if (selectedFolder !== n.folder) {
+                    setSelectedFolder(n.folder)
+                    setNotes(await db.notes.where('folder').equals(n.folder).toArray())
+                  }
+                  setActiveNote(n)
+                }
+                setMobileScreen('editor')
+              }}
+            />
+          </div>
+          <div className="col-editor">
+            {activeNote && (
+              <>
+                <EditorActionBar
+                  onSave={saveActiveNote}
+                  currentFolder={activeNote.folder}
+                  folders={folders}
+                  onMoveFolder={moveNoteToFolder}
+                  searchQuery={editorSearchQuery}
+                  onSearchChange={setEditorSearchQuery}
+                  previewMode={editorPreviewMode}
+                  onTogglePreview={() => setEditorPreviewMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
+                  llmLinksCount={activeNote.llmLinks.length}
+                  isLlmOpen={isLlmOpen}
+                  onToggleLlm={() => setIsLlmOpen((o) => !o)}
+                  onDelete={deleteActiveNote}
+                />
+                <Editor
+                  body={activeNote.body}
+                  onChange={updateBody}
+                  highlightQuery={editorSearchQuery || searchQuery}
+                  mode={editorPreviewMode}
+                  onModeChange={setEditorPreviewMode}
+                  hideToolbar
+                />
+                <LlmLinkPanel
+                  body={activeNote.body}
+                  links={activeNote.llmLinks}
+                  isOpen={isLlmOpen}
+                  onClose={() => setIsLlmOpen(false)}
+                  onAddLink={(url, memo) => {
+                    setActiveNote({
+                      ...activeNote,
+                      llmLinks: [...activeNote.llmLinks, { url, label: memo, addedAt: new Date().toISOString() }],
+                      dirty: true,
+                    })
+                  }}
+                />
+              </>
+            )}
+          </div>
+        </SwipeContainer>
+      </PullToRefresh>
     </div>
   )
 }
