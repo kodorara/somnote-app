@@ -141,6 +141,22 @@ export default function App() {
   }, [settings])
 
 
+  const activeNoteRef = useRef<StoredNote | null>(null)
+  const notesRef = useRef<StoredNote[]>([])
+  const lastSavedBodyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    activeNoteRef.current = activeNote
+  }, [activeNote])
+
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
+
+  useEffect(() => {
+    lastSavedBodyRef.current = activeNote?.body ?? null
+  }, [activeNote?.id])
+
   const updateBody = (body: string) => {
     if (!activeNote) return
     setActiveNote({ ...activeNote, body, dirty: true, updatedAt: new Date().toISOString() })
@@ -152,6 +168,7 @@ export default function App() {
     // 設計書2.2節: タイトルは保存のたびに本文1行目から自動算出する
     const withTitle = { ...note, title: deriveTitle(note.body) }
     await db.notes.put(withTitle)
+    lastSavedBodyRef.current = withTitle.body
     updateSearchIndexForNote(withTitle)
     setNotes((prev) => {
       const exists = prev.some((n) => n.id === withTitle.id)
@@ -165,6 +182,52 @@ export default function App() {
     if (!activeNote) return
     await saveNote(activeNote)
   }
+
+  const autoSaveActiveNote = async () => {
+    const note = activeNoteRef.current
+    if (!note) return
+    if (note.body === lastSavedBodyRef.current) return
+    if (shouldDiscardDraft(note.body) && !notesRef.current.some((n) => n.id === note.id)) {
+      return
+    }
+    await saveNote(note)
+  }
+
+  useEffect(() => {
+    // 30秒インターバルでの自動保存
+    const timer = setInterval(() => {
+      void autoSaveActiveNote()
+    }, 30000)
+
+    // バックグラウンド化(アプリ切替・ホーム画面・画面オフなど)の即時保存
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void autoSaveActiveNote()
+      }
+    }
+
+    // タブクローズ・ページ離脱(モバイル/PC)
+    const handlePageHide = () => {
+      void autoSaveActiveNote()
+    }
+
+    // デスクトップでのタブ閉じ/リロード
+    const handleBeforeUnload = () => {
+      void autoSaveActiveNote()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [])
+
 
   const leaveEditor = async () => {
     if (!activeNote) return

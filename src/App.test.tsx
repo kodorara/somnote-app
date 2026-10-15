@@ -157,7 +157,78 @@ describe('explicit save button', () => {
   })
 })
 
+describe('autosave and departure save', () => {
+  it('autosaves active note to IndexedDB on 30-second interval when body changed', async () => {
+    let intervalCb: (() => void) | null = null
+    let intervalMs: number | undefined
+    vi.spyOn(window, 'setInterval').mockImplementation(((cb: TimerHandler, ms?: number) => {
+      if (typeof cb === 'function' && ms === 30000) {
+        intervalCb = cb as () => void
+        intervalMs = ms
+      }
+      return 1 as unknown as number
+    }) as typeof window.setInterval)
+
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    expect(intervalMs).toBe(30000)
+    expect(intervalCb).toBeTruthy()
+
+    fireEvent.change(textarea, { target: { value: 'オートセーブのテスト本文' } })
+
+    // 30秒タイマーコールバックを直接発火
+    intervalCb!()
+
+    await waitFor(async () => {
+      const all = await db.notes.toArray()
+      expect(all.some((n) => n.body === 'オートセーブのテスト本文')).toBe(true)
+    })
+  })
+
+
+  it('saves active note immediately when document becomes hidden (visibilitychange)', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.change(textarea, { target: { value: 'バックグラウンド保存テスト' } })
+
+    // document.visibilityState を 'hidden' にモックしてイベント発火
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    fireEvent(document, new Event('visibilitychange'))
+
+    await waitFor(async () => {
+      const all = await db.notes.toArray()
+      expect(all.some((n) => n.body === 'バックグラウンド保存テスト')).toBe(true)
+    })
+
+    // 元に戻す
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  })
+
+  it('saves active note immediately on pagehide event', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.change(textarea, { target: { value: 'ページ離脱保存テスト' } })
+
+    fireEvent(window, new Event('pagehide'))
+
+    await waitFor(async () => {
+      const all = await db.notes.toArray()
+      expect(all.some((n) => n.body === 'ページ離脱保存テスト')).toBe(true)
+    })
+  })
+})
+
 describe('folder management', () => {
+
   it('creates a folder and pushes folders.json to GitHub', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
     vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
