@@ -7,7 +7,7 @@ function note(overrides: Partial<StoredNote>): StoredNote {
   return {
     id: 'x', title: 't', folder: 'f', seq: 0, tags: [],
     createdAt: '', updatedAt: '', deleted: false, llmLinks: [], body: '',
-    baseSha: null, dirty: false,
+    baseSha: null, dirty: false, pendingOldPath: null,
     ...overrides,
   }
 }
@@ -59,14 +59,52 @@ describe('planSync', () => {
   })
 
   it('marks old path for deletion when a note has been moved to a different folder locally', () => {
-    // ローカルでは新フォルダ「仕事」に移動済み、リモートツリーには旧フォルダ「日記」に残っている
-    const local = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+    // ローカルでは新フォルダ「仕事」に移動済み、リモートツリーには旧フォルダ「日記」に残っている。
+    // pendingOldPathが「自分がこの移動をした」証拠になる。
+    const local = [
+      note({ id: 'a', folder: '仕事', dirty: true, baseSha: null, pendingOldPath: { folder: '日記', sha: 'sha-old' } }),
+    ]
     const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
     const plan = planSync(local, remoteTree)
 
     expect(plan.toPush).toEqual(['a'])
     expect(plan.toPull).toEqual([])
     expect(plan.toDelete).toEqual([{ id: 'a', folder: '日記', sha: 'sha-old' }])
+  })
+
+  it('pulls (not deletes) a path mismatch that is not this device\'s own recorded move — another device moved it first', () => {
+    // 端末Bはまだ「日記→仕事」への移動を知らない(pendingOldPathを持たない)。リモートには
+    // 新パス「仕事」しか残っていない(端末Aが移動・旧パス削除まで完了済み)。この食い違いを
+    // 「自分の旧パス」と誤認して削除してはならず、新しい場所を取り込む(pull)べき。
+    const local = [note({ id: 'a', folder: '日記', dirty: false, baseSha: 'sha-old', pendingOldPath: null })]
+    const remoteTree = [{ path: 'notes/仕事/a.md', sha: 'sha-new' }]
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toDelete).toEqual([])
+    expect(plan.toPull).toEqual([{ id: 'a', folder: '仕事' }])
+  })
+
+  it('does nothing for an unrecognized path mismatch when the local note has unsaved edits (avoids clobbering)', () => {
+    const local = [
+      note({ id: 'a', folder: '日記', dirty: true, baseSha: 'sha-old', pendingOldPath: null, body: '編集中の内容' }),
+    ]
+    const remoteTree = [{ path: 'notes/仕事/a.md', sha: 'sha-new' }]
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toDelete).toEqual([])
+    expect(plan.toPull).toEqual([])
+  })
+
+  it('does not delete a path that only coincidentally differs, when it is a different device\'s still-pending old-path cleanup for a different folder', () => {
+    // pendingOldPathが別のフォルダを指している場合、このリモートパスは「自分の旧パス」
+    // ではないので削除対象にしてはならない
+    const local = [
+      note({ id: 'a', folder: '仕事', dirty: true, baseSha: null, pendingOldPath: { folder: '趣味', sha: 'sha-other' } }),
+    ]
+    const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toDelete).toEqual([])
   })
 })
 
@@ -208,9 +246,11 @@ describe('runSync', () => {
     expect(aNote?.seq).toBe(1)
   })
 
-  it('deletes old path on remote after successfully pushing a moved note to new path', async () => {
+  it('deletes old path on remote after successfully pushing a moved note to new path, and clears pendingOldPath', async () => {
     // ローカルで「日記」から「仕事」に移動したノート
-    const localNotes = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+    const localNotes = [
+      note({ id: 'a', folder: '仕事', dirty: true, baseSha: null, pendingOldPath: { folder: '日記', sha: 'sha-old' } }),
+    ]
     const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
     const github = {
       putContent: vi.fn().mockResolvedValue({ content: { sha: 'sha-new' } }),
@@ -224,11 +264,16 @@ describe('runSync', () => {
     expect(github.putContent).toHaveBeenCalledWith('仕事', 'a', expect.anything(), null)
     // 旧パスのDELETEが呼ばれる
     expect(github.deleteContent).toHaveBeenCalledWith('日記', 'a', 'sha-old')
-    expect(result.updated.find((n) => n.id === 'a')?.dirty).toBe(false)
+    const updated = result.updated.find((n) => n.id === 'a')
+    expect(updated?.dirty).toBe(false)
+    // 削除成功後はpendingOldPathをクリアし、次回以降に誤って再利用されないようにする
+    expect(updated?.pendingOldPath).toBeNull()
   })
 
-  it('does not delete old path if pushing to new path fails', async () => {
-    const localNotes = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+  it('does not delete old path if pushing to new path fails, and keeps pendingOldPath for the next retry', async () => {
+    const localNotes = [
+      note({ id: 'a', folder: '仕事', dirty: true, baseSha: null, pendingOldPath: { folder: '日記', sha: 'sha-old' } }),
+    ]
     const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
     const github = {
       putContent: vi.fn().mockRejectedValue(new Error('Network error on push')),
@@ -239,6 +284,20 @@ describe('runSync', () => {
     await expect(runSync(localNotes, remoteTree, github)).rejects.toThrow('Network error on push')
     // 新パスのpushが失敗したので旧パスは削除されないこと
     expect(github.deleteContent).not.toHaveBeenCalled()
+  })
+
+  it('leaves pendingOldPath set for a retry when the push to the new path succeeds but the old-path delete fails', async () => {
+    const localNotes = [
+      note({ id: 'a', folder: '仕事', dirty: true, baseSha: null, pendingOldPath: { folder: '日記', sha: 'sha-old' } }),
+    ]
+    const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
+    const github = {
+      putContent: vi.fn().mockResolvedValue({ content: { sha: 'sha-new' } }),
+      getContent: vi.fn(),
+      deleteContent: vi.fn().mockRejectedValue(new Error('Network error on delete')),
+    }
+
+    await expect(runSync(localNotes, remoteTree, github)).rejects.toThrow('Network error on delete')
   })
 })
 

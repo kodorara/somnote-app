@@ -4,6 +4,12 @@ import type { Note } from './frontmatter'
 export interface StoredNote extends Note {
   baseSha: string | null // 最後に同期した時点のGit blob SHA。新規未push時はnull
   dirty: boolean // ローカル編集があり未pushかどうか
+  // フォルダ移動時、移動前に同期済みだった場所(旧パス)を記録する。このデバイス自身が
+  // 移動の当事者であることの唯一の証拠であり、「リモートのどのパスが本当に旧パスか」を
+  // 判定するために使う(他デバイスがまだ知らない移動を誤って削除してしまう事故を防ぐ)。
+  // frontmatter(GitHub上のMarkdown)には含めないローカル専用フィールド。
+  // 省略(undefined)は「保留中の旧パスなし」とみなす(nullと同義)。
+  pendingOldPath?: { folder: string; sha: string } | null
 }
 
 export interface StoredFolder {

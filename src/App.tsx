@@ -360,6 +360,12 @@ export default function App() {
       folder: newFolderName,
       baseSha: null, // 新フォルダへの新規作成としてpushし、旧パスは同期時にDELETEする
       dirty: true,
+      // 移動前に同期済みだった場所を記録しておく(=このデバイスが移動の当事者である証拠)。
+      // 同期待ちのまま連続で移動された場合は、最初に記録した旧パスを保持し続ける。
+      pendingOldPath:
+        activeNote.baseSha !== null
+          ? { folder: activeNote.folder, sha: activeNote.baseSha }
+          : (activeNote.pendingOldPath ?? null),
       updatedAt: new Date().toISOString(),
     }
     await db.notes.put(moved)

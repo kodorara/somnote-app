@@ -68,15 +68,31 @@ export function planSync(localNotes: StoredNote[], remoteTree: Pick<TreeEntry, '
 
   // リモートに存在するノートを走査し、
   // 1) 未知のノート(他端末での新規作成等)をtoPullへ
-  // 2) フォルダ移動により旧パスがリモートに残っているものをtoDeleteへ
+  // 2) ローカルのfolder値とパスが食い違うものを、以下のどちらかに振り分ける:
+  //    a) 自分自身が記録した旧パス(pendingOldPath)と一致する → 本当に自分が移動した
+  //       旧パスなのでtoDeleteへ
+  //    b) 一致しない → 自分がまだ知らない「他端末での移動」の可能性が高いので、
+  //       削除ではなくtoPullへ(新しい内容とfolder値を取り込む)。ただしローカルに
+  //       未確定の編集(dirty)がある場合は、誤って上書きしないよう今回は何もしない
+  //       (次回同期でローカルの状態が確定してから再評価する)。
+  // この区別がないと、A端末が移動した直後でまだB端末に伝わっていない場合に、B端末が
+  // 「新パスの方が自分のfolder値と食い違う」と誤認して、A端末が今まさに作った正しい
+  // ファイルを削除してしまう事故が起きる。
   for (const entry of remoteTree) {
     const target = parseNotePath(entry.path)
     if (!target) continue
     const local = localById.get(target.id)
     if (!local) {
       plan.toPull.push(target)
-    } else if (local.folder !== target.folder) {
+      continue
+    }
+    if (local.folder === target.folder) continue
+
+    const isOwnStalePath = local.pendingOldPath?.folder === target.folder
+    if (isOwnStalePath) {
       plan.toDelete.push({ id: target.id, folder: target.folder, sha: entry.sha })
+    } else if (!local.dirty) {
+      plan.toPull.push(target)
     }
   }
 
@@ -149,12 +165,14 @@ export async function runSync(
 
   // 旧パスの削除:
   // 新パスへのpushが成功したノート、またはローカルで既に未同期(dirty)でないノートについて、
-  // リモートに残っている旧パスのファイルを削除する
+  // リモートに残っている旧パスのファイルを削除する。成功したらpendingOldPathをクリアする
+  // (失敗した場合は残したままにして、次回同期で自動的にリトライされるようにする)。
   if (github.deleteContent && plan.toDelete.length > 0) {
     for (const del of plan.toDelete) {
       const local = byId.get(del.id)
       if (local && (pushedSuccessfully.has(del.id) || !local.dirty)) {
         await github.deleteContent(del.folder, del.id, del.sha)
+        local.pendingOldPath = null
       }
     }
   }
@@ -174,6 +192,9 @@ export async function runSync(
           ...parsed,
           baseSha: res.sha,
           dirty: false,
+          // pull(他端末での編集やフォルダ移動の取り込み含む)で確定した内容なので、
+          // 自分自身の(今はもう無関係な)旧パス削除予定があれば破棄する
+          pendingOldPath: null,
         } as StoredNote
         byId.set(target.id, merged)
         batchResult.push(merged)

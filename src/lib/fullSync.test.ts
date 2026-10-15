@@ -133,11 +133,13 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
   })
 
   it('deletes old remote path when a note is moved to another folder', async () => {
-    // ローカルで「前ノート」から「新フォルダ」へ移動されたノート(baseSha: null, dirty: true)
+    // ローカルで「前ノート」から「新フォルダ」へ移動されたノート(baseSha: null, dirty: true)。
+    // pendingOldPathが「自分がこの移動をした」証拠になる。
     await db.notes.put({
       id: 'a', title: 'タイトルA', folder: '新フォルダ', seq: 0, tags: [],
       createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-10-15T00:00:00+09:00',
       deleted: false, llmLinks: [], body: '本文A', baseSha: null, dirty: true,
+      pendingOldPath: { folder: '前ノート', sha: 'old-sha' },
     })
     const github = githubStub({
       getTree: vi.fn().mockResolvedValue({
@@ -161,6 +163,44 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
     expect(persisted?.folder).toBe('新フォルダ')
     expect(persisted?.dirty).toBe(false)
     expect(persisted?.baseSha).toBe('new-sha')
+    expect(persisted?.pendingOldPath).toBeNull()
+  })
+
+  it('pulls (not deletes) a moved note when this device has no record of having moved it itself', async () => {
+    // 端末Bはこのノートを「前ノート」に持ったまま、移動を知らない(pendingOldPathなし)。
+    // リモートには新パス「新フォルダ」しか存在しない(端末Aが移動・旧パス削除を完了済み)。
+    await db.notes.put({
+      id: 'a', title: '旧タイトル', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '旧本文', baseSha: 'old-sha', dirty: false,
+      pendingOldPath: null,
+    })
+    const remoteRaw = `---\nid: a\ntitle: 新タイトル\nfolder: 新フォルダ\nseq: 0\ntags: []\ncreated_at: '2026-01-01T00:00:00+09:00'\nupdated_at: '2026-10-15T00:00:00+09:00'\ndeleted: false\nllm_links: []\n---\n新本文\n`
+    const github = githubStub({
+      getTree: vi.fn().mockResolvedValue({
+        tree: [
+          { path: 'folders.json', sha: 'folders-sha' },
+          { path: 'notes/新フォルダ/a.md', sha: 'new-sha' },
+        ],
+        truncated: false,
+      }),
+      getContent: vi.fn().mockImplementation(async (_o: string, _r: string, path: string) => {
+        if (path === 'folders.json') {
+          return { sha: 'folders-sha', content: JSON.stringify([{ folderId: '1', name: '前ノート', color: '#50bebe', seq: 0 }]) }
+        }
+        if (path === 'notes/新フォルダ/a.md') return { sha: 'new-sha', content: remoteRaw }
+        throw new Error('unexpected path ' + path)
+      }),
+    })
+
+    const result = await fullSync({ token: 't', owner: 'o', repo: 'r' }, github as never)
+
+    expect(github.deleteContent).not.toHaveBeenCalled()
+    expect(result.pushed).toBe(0)
+    const persisted = await db.notes.get('a')
+    expect(persisted?.folder).toBe('新フォルダ')
+    expect(persisted?.title).toBe('新タイトル')
+    expect(persisted?.dirty).toBe(false)
   })
 })
 
