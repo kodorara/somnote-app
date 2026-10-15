@@ -135,3 +135,53 @@ export async function deleteContent(
   if (!res.ok) throw await describeError('deleteContent', res)
 }
 
+export interface CommitInfo {
+  sha: string
+  message: string
+  authorDate: string
+  authorName?: string
+}
+
+export async function listCommitsForPath(
+  owner: string,
+  repo: string,
+  path: string,
+  token: string,
+): Promise<CommitInfo[]> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/commits?path=${encodePath(path)}`, {
+    headers: headers(token),
+  })
+  if (res.status === 404) return []
+  if (!res.ok) throw await describeError('listCommitsForPath', res)
+  const data = (await res.json()) as Array<{
+    sha: string
+    commit: {
+      message: string
+      author?: { name?: string; date?: string }
+      committer?: { name?: string; date?: string }
+    }
+  }>
+  return data.map((item) => ({
+    sha: item.sha,
+    message: item.commit.message,
+    authorDate: item.commit.author?.date ?? item.commit.committer?.date ?? '',
+    authorName: item.commit.author?.name ?? item.commit.committer?.name ?? '',
+  }))
+}
+
+export async function getContentAtRef(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  token: string,
+): Promise<{ sha: string; content: string }> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}`, {
+    headers: headers(token),
+  })
+  if (!res.ok) throw await describeError('getContentAtRef', res)
+  const data = await res.json()
+  return { sha: data.sha as string, content: decodeUtf8Base64(data.content as string) }
+}
+
+

@@ -10,6 +10,7 @@ import {
   TrashIcon,
   CloseIcon,
   RefreshIcon,
+  HistoryIcon,
 } from './icons'
 
 export interface EditorActionBarProps {
@@ -27,7 +28,10 @@ export interface EditorActionBarProps {
   onDelete: () => void
   isTrashNote?: boolean
   onRestore?: () => void
+  isHistoryOpen?: boolean
+  onToggleHistory?: () => void
 }
+
 
 export function EditorActionBar({
   onSave,
@@ -44,8 +48,11 @@ export function EditorActionBar({
   onDelete,
   isTrashNote = false,
   onRestore,
+  isHistoryOpen = false,
+  onToggleHistory,
 }: EditorActionBarProps) {
   const [searchExpanded, setSearchExpanded] = useState(false)
+
 
   return (
     <div className="editor-action-bar-container">
@@ -118,7 +125,21 @@ export function EditorActionBar({
           {previewMode === 'edit' ? <PreviewIcon size={18} /> : <EditIcon size={18} />}
         </button>
 
-        {/* 6. ゴミ箱 または 復元 */}
+        {/* 6. 編集履歴 */}
+        {onToggleHistory && (
+          <button
+            type="button"
+            className={`action-bar-btn ${isHistoryOpen ? 'is-active' : ''}`}
+            aria-label="編集履歴"
+            onClick={onToggleHistory}
+            title="編集履歴（巻き戻し）"
+          >
+            <HistoryIcon size={18} />
+          </button>
+        )}
+
+        {/* 7. ゴミ箱 または 復元 */}
+
         {isTrashNote ? (
           <button
             type="button"

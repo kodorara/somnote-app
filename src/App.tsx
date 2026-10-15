@@ -14,7 +14,9 @@ import { NoteListControls } from './components/NoteListControls'
 import { Editor } from './components/Editor'
 import { SearchBar } from './components/SearchBar'
 import { LlmLinkPanel } from './components/LlmLinkPanel'
+import { HistoryPanel } from './components/HistoryPanel'
 import { EditorActionBar } from './components/EditorActionBar'
+
 import { SwipeContainer } from './components/SwipeContainer'
 import { PullToRefresh } from './components/PullToRefresh'
 import { ConflictResolver } from './components/ConflictResolver'
@@ -42,7 +44,9 @@ export default function App() {
   const [editorSearchQuery, setEditorSearchQuery] = useState('')
   const [editorPreviewMode, setEditorPreviewMode] = useState<'edit' | 'preview'>('edit')
   const [isLlmOpen, setIsLlmOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortBy>('createdDesc')
@@ -263,7 +267,9 @@ export default function App() {
     }
     setEditorSearchQuery('')
     setIsLlmOpen(false)
+    setIsHistoryOpen(false)
     setEditorPreviewMode('edit')
+
   }
 
   const deleteActiveNote = async () => {
@@ -669,6 +675,8 @@ export default function App() {
                   onDelete={deleteActiveNote}
                   isTrashNote={!!activeNote.deleted}
                   onRestore={restoreActiveNote}
+                  isHistoryOpen={isHistoryOpen}
+                  onToggleHistory={() => setIsHistoryOpen((o) => !o)}
                 />
 
                 <Editor
@@ -692,7 +700,19 @@ export default function App() {
                     })
                   }}
                 />
+                <HistoryPanel
+                  isOpen={isHistoryOpen}
+                  onClose={() => setIsHistoryOpen(false)}
+                  folder={activeNote.folder}
+                  noteId={activeNote.id}
+                  settings={settings}
+                  online={online}
+                  onRestoreContent={(restoredBody) => {
+                    updateBody(restoredBody)
+                  }}
+                />
               </>
+
             )}
           </div>
         </SwipeContainer>

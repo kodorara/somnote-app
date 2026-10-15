@@ -116,6 +116,23 @@ describe('EditorActionBar', () => {
     fireEvent.click(bannerBtn)
     expect(onRestore).toHaveBeenCalledTimes(2)
   })
+
+  it('renders history button and calls onToggleHistory when clicked', () => {
+    const onToggleHistory = vi.fn()
+    render(
+      <EditorActionBar
+        {...defaultProps}
+        onToggleHistory={onToggleHistory}
+        isHistoryOpen={false}
+      />,
+    )
+    const historyBtn = screen.getByRole('button', { name: '編集履歴' })
+    expect(historyBtn).toBeInTheDocument()
+
+    fireEvent.click(historyBtn)
+    expect(onToggleHistory).toHaveBeenCalledTimes(1)
+  })
 })
+
 
 

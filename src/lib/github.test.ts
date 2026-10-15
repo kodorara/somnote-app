@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getTree, getContent, putContent, deleteContent, encodeUtf8Base64, decodeUtf8Base64 } from './github'
+import {
+  getTree,
+  getContent,
+  putContent,
+  deleteContent,
+  listCommitsForPath,
+  getContentAtRef,
+  encodeUtf8Base64,
+  decodeUtf8Base64,
+} from './github'
 
 
 beforeEach(() => {
@@ -119,4 +128,76 @@ describe('deleteContent', () => {
     ).rejects.toThrow(/deleteContent failed: 404 - Not Found/)
   })
 })
+
+describe('listCommitsForPath', () => {
+  it('fetches commits for given path and maps them to CommitInfo list', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          sha: 'commit-sha-1',
+          commit: {
+            message: 'update memo',
+            author: { name: 'User', date: '2026-10-15T12:00:00Z' },
+          },
+        },
+        {
+          sha: 'commit-sha-2',
+          commit: {
+            message: 'initial commit',
+            committer: { name: 'Committer', date: '2026-10-10T10:00:00Z' },
+          },
+        },
+      ],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const commits = await listCommitsForPath('owner', 'repo', 'notes/前ノート/a.md', 'token123')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.github.com/repos/owner/repo/commits?path=notes/${encodeURIComponent('前ノート')}/a.md`,
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token123' }) }),
+    )
+    expect(commits).toEqual([
+      { sha: 'commit-sha-1', message: 'update memo', authorDate: '2026-10-15T12:00:00Z', authorName: 'User' },
+      { sha: 'commit-sha-2', message: 'initial commit', authorDate: '2026-10-10T10:00:00Z', authorName: 'Committer' },
+    ])
+  })
+
+  it('returns empty array when file does not exist (404)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({ message: 'Not Found' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const commits = await listCommitsForPath('owner', 'repo', 'notes/新規/not-found.md', 'token123')
+    expect(commits).toEqual([])
+  })
+})
+
+describe('getContentAtRef', () => {
+  it('fetches content at specific ref and decodes base64 content', async () => {
+    const raw = '過去バージョンのメモ本文'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        sha: 'blob-sha',
+        content: encodeUtf8Base64(raw),
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await getContentAtRef('owner', 'repo', 'notes/前ノート/a.md', 'commit-sha-1', 'token123')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.github.com/repos/owner/repo/contents/notes/${encodeURIComponent('前ノート')}/a.md?ref=commit-sha-1`,
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token123' }) }),
+    )
+    expect(res).toEqual({ sha: 'blob-sha', content: raw })
+  })
+})
+
 

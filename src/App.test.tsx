@@ -709,5 +709,54 @@ describe('trash virtual folder and restore', () => {
   })
 })
 
+describe('note history and restore', () => {
+  it('opens history modal from editor, displays commit history, and restores past body', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    const listCommitsSpy = vi.spyOn(githubClient, 'listCommitsForPath').mockResolvedValue([
+      {
+        sha: 'commit-past-1',
+        message: '過去の更新',
+        authorDate: '2026-10-10T12:00:00Z',
+        authorName: 'User',
+      },
+    ])
+    const getContentAtRefSpy = vi.spyOn(githubClient, 'getContentAtRef').mockResolvedValue({
+      sha: 'blob-past-1',
+      content: `---\nid: test-note\ntitle: 過去タイトル\nfolder: 前ノート\nseq: 0\ntags: []\ncreated_at: ''\nupdated_at: ''\n---\n巻き戻された過去の本文テキスト`,
+    })
+
+    render(<App />)
+    const textarea = (await screen.findByRole('textbox', { name: '本文' })) as HTMLTextAreaElement
+
+    // 現在の本文を入力
+    fireEvent.change(textarea, { target: { value: '最新の未保存テキスト' } })
+
+    // 編集履歴ボタンをクリック
+    const historyBtn = screen.getByRole('button', { name: '編集履歴' })
+    fireEvent.click(historyBtn)
+
+    // 履歴モーダルが表示され、コミット一覧が表示される
+    expect(await screen.findByText('過去の更新')).toBeInTheDocument()
+    expect(listCommitsSpy).toHaveBeenCalled()
+
+    // 過去本文がプレビューされていることを確認
+    expect(await screen.findByDisplayValue('巻き戻された過去の本文テキスト')).toBeInTheDocument()
+    expect(getContentAtRefSpy).toHaveBeenCalledWith('o', 'somnote-data', expect.any(String), 'commit-past-1', 't')
+
+    // 「この内容に戻す」ボタンをクリック
+    const restoreBtn = screen.getByRole('button', { name: 'この内容に戻す' })
+    fireEvent.click(restoreBtn)
+
+    // モーダルが閉じ、エディタ本文が巻き戻された内容に更新されていること
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '編集履歴' })).not.toBeInTheDocument()
+    })
+    expect(textarea.value).toBe('巻き戻された過去の本文テキスト')
+  })
+})
+
+
 
 

@@ -10,6 +10,7 @@ import {
   TrashIcon,
   RefreshIcon,
   CloseIcon,
+  HistoryIcon,
 } from './icons'
 
 describe('icons', () => {
@@ -40,7 +41,11 @@ describe('icons', () => {
 
     const { container: c9 } = render(<CloseIcon />)
     expect(c9.querySelector('svg')).toBeInTheDocument()
+
+    const { container: c10 } = render(<HistoryIcon />)
+    expect(c10.querySelector('svg')).toBeInTheDocument()
   })
+
 
   it('respects custom size and className', () => {
     const { container } = render(<SaveIcon size={24} className="custom-icon" />)
