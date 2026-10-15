@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { db, type StoredNote, type StoredFolder } from './lib/db'
 import { createDraftNote, shouldDiscardDraft, deriveTitle } from './lib/draftNote'
 import { getGithubSettings, saveGithubSettings, type GithubSettings } from './lib/githubSettings'
-import { buildIndex, search } from './lib/search'
+import { buildIndex, search, indexNote, removeNoteFromIndex, type SearchIndex } from './lib/search'
 import { fullSync } from './lib/fullSync'
 import { pushFolders } from './lib/folderSync'
 import { createFolder, deleteFolder, reorderFolders, topFolder } from './lib/folders'
@@ -35,7 +35,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine)
   const [pendingCount, setPendingCount] = useState(0)
   const [conflicts, setConflicts] = useState<ConflictItem[]>([])
-  const [, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -44,6 +44,7 @@ export default function App() {
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [folderError, setFolderError] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
+  const searchIndexRef = useRef<SearchIndex | null>(null)
 
   useEffect(() => {
     const s = getGithubSettings()
@@ -55,6 +56,31 @@ export default function App() {
     const all = await db.notes.toArray()
     setPendingCount(all.filter((n) => n.dirty).length)
   }
+
+  const rebuildSearchIndex = async () => {
+    const all = await db.notes.toArray()
+    searchIndexRef.current = buildIndex(
+      all.filter((n) => !n.deleted).map((n) => ({ id: n.id, title: n.title, body: n.body })),
+    )
+  }
+
+  const updateSearchIndexForNote = (note: StoredNote) => {
+    if (!searchIndexRef.current) return
+    if (note.deleted) {
+      removeNoteFromIndex(searchIndexRef.current, note.id)
+    } else {
+      indexNote(searchIndexRef.current, { id: note.id, title: note.title, body: note.body })
+    }
+  }
+
+  const [searchResetKey, setSearchResetKey] = useState(0)
+
+  const resetSearch = () => {
+    setSearchQuery('')
+    setSearchResultIds(null)
+    setSearchResetKey((k) => k + 1)
+  }
+
 
   const loadFolderAndDraft = async (allFolders: StoredFolder[]) => {
     // 起動時は常に一番上(表示順が最小)のフォルダで新規メモを書き始める。
@@ -96,6 +122,7 @@ export default function App() {
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
         await loadFolderAndDraft(allFolders)
+        await rebuildSearchIndex()
       } finally {
         syncInFlightRef.current = false
       }
@@ -113,6 +140,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
 
+
   const updateBody = (body: string) => {
     if (!activeNote) return
     setActiveNote({ ...activeNote, body, dirty: true, updatedAt: new Date().toISOString() })
@@ -124,6 +152,7 @@ export default function App() {
     // 設計書2.2節: タイトルは保存のたびに本文1行目から自動算出する
     const withTitle = { ...note, title: deriveTitle(note.body) }
     await db.notes.put(withTitle)
+    updateSearchIndexForNote(withTitle)
     setNotes((prev) => {
       const exists = prev.some((n) => n.id === withTitle.id)
       return exists ? prev.map((n) => (n.id === withTitle.id ? withTitle : n)) : [...prev, withTitle]
@@ -148,13 +177,16 @@ export default function App() {
     if (!activeNote) return
     const deletedNote = { ...activeNote, deleted: true, dirty: true, updatedAt: new Date().toISOString() }
     await db.notes.put(deletedNote)
+    updateSearchIndexForNote(deletedNote)
     setNotes(notes.filter((n) => n.id !== deletedNote.id))
     setActiveNote(null)
+    resetSearch()
     setMobileScreen('notes')
     await refreshPendingCount()
   }
 
   const goBack = async () => {
+    resetSearch()
     if (mobileScreen === 'editor') {
       await leaveEditor()
       setMobileScreen('notes')
@@ -166,6 +198,7 @@ export default function App() {
   const createNewNote = async () => {
     if (!selectedFolder) return
     await leaveEditor()
+    resetSearch()
     const maxSeq = notes.reduce((m, n) => Math.max(m, n.seq), -1)
     const draft = createDraftNote(selectedFolder, maxSeq)
     setActiveNote(draft)
@@ -174,14 +207,23 @@ export default function App() {
 
   const moveNoteToFolder = async (newFolderName: string) => {
     if (!activeNote || newFolderName === activeNote.folder) return
-    const moved = { ...activeNote, folder: newFolderName, dirty: true, updatedAt: new Date().toISOString() }
+    const moved = {
+      ...activeNote,
+      folder: newFolderName,
+      baseSha: null, // 新フォルダへの新規作成としてpushし、旧パスは同期時にDELETEする
+      dirty: true,
+      updatedAt: new Date().toISOString(),
+    }
     await db.notes.put(moved)
+    updateSearchIndexForNote(moved)
     // 現在表示中のフォルダ一覧には、移動先が別フォルダなのでもう含めない
     setNotes(notes.filter((n) => n.id !== moved.id))
     setActiveNote(null)
+    resetSearch()
     setMobileScreen('notes')
     await refreshPendingCount()
   }
+
 
   const handleCreateFolder = async (name: string) => {
     setFolderError(null)
@@ -211,6 +253,7 @@ export default function App() {
 
   const handleDeleteFolder = async (folder: StoredFolder) => {
     setFolderError(null)
+    resetSearch()
     try {
       await deleteFolder(folder)
     } catch (err) {
@@ -238,15 +281,17 @@ export default function App() {
     }
   }
 
-  const runSearch = async (query: string) => {
+  const runSearch = (query: string) => {
     setSearchQuery(query)
     if (!query) {
       setSearchResultIds(null)
       return
     }
-    const allNotes = await db.notes.toArray()
-    const idx = buildIndex(allNotes.filter((n) => !n.deleted).map((n) => ({ id: n.id, title: n.title, body: n.body })))
-    setSearchResultIds(search(idx, query))
+    if (!searchIndexRef.current) {
+      setSearchResultIds([])
+      return
+    }
+    setSearchResultIds(search(searchIndexRef.current, query))
   }
 
   const visibleNotes = useMemo(() => {
@@ -276,6 +321,7 @@ export default function App() {
     } finally {
       setSyncProgress(null)
       await refreshPendingCount()
+      await rebuildSearchIndex()
       syncInFlightRef.current = false
     }
   }
@@ -293,6 +339,7 @@ export default function App() {
       setConflicts(conflicts.filter((c) => c.id !== conflict.id))
     }
     await refreshPendingCount()
+    await rebuildSearchIndex()
   }
 
   if (!unlocked) {
@@ -329,7 +376,8 @@ export default function App() {
             ← 戻る
           </button>
         )}
-        <SearchBar onQueryChange={runSearch} />
+        <SearchBar key={searchResetKey} value={searchQuery} onQueryChange={runSearch} />
+
         <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
       </div>
       {syncProgress && (
@@ -353,6 +401,7 @@ export default function App() {
             selectedName={selectedFolder}
             onSelect={async (name) => {
               await leaveEditor()
+              resetSearch()
               setSelectedFolder(name)
               setNotes(await db.notes.where('folder').equals(name).toArray())
               setWordFilter('')
@@ -364,6 +413,7 @@ export default function App() {
             onReorder={handleReorderFolders}
           />
         </div>
+
         <div className="col-notes">
           <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
             + 新規作成

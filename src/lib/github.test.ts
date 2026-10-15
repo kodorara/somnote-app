@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getTree, getContent, putContent, encodeUtf8Base64, decodeUtf8Base64 } from './github'
+import { getTree, getContent, putContent, deleteContent, encodeUtf8Base64, decodeUtf8Base64 } from './github'
+
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -80,3 +81,42 @@ describe('putContent', () => {
     expect(body.sha).toBe('oldsha')
   })
 })
+
+describe('deleteContent', () => {
+  it('sends DELETE request with sha and message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await deleteContent('owner', 'repo', 'notes/前ノート/old.md', 'sha-to-delete', 'token123')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.github.com/repos/owner/repo/contents/notes/${encodeURIComponent('前ノート')}/old.md`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token123',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          message: 'delete notes/前ノート/old.md',
+          sha: 'sha-to-delete',
+        }),
+      }),
+    )
+  })
+
+  it('throws on non-ok response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({ message: 'Not Found' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      deleteContent('owner', 'repo', 'notes/前ノート/old.md', 'sha-to-delete', 'token123'),
+    ).rejects.toThrow(/deleteContent failed: 404 - Not Found/)
+  })
+})
+

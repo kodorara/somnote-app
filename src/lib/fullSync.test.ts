@@ -22,9 +22,11 @@ function githubStub(overrides: Partial<Record<string, unknown>> = {}) {
       throw new Error('unexpected path ' + path)
     }),
     putContent: vi.fn(),
+    deleteContent: vi.fn(),
     ...overrides,
   }
 }
+
 
 beforeEach(async () => {
   await db.notes.clear()
@@ -129,4 +131,36 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
     const folders = await db.folders.toArray()
     expect(folders.some((f) => f.folderId === 'new-local')).toBe(true)
   })
+
+  it('deletes old remote path when a note is moved to another folder', async () => {
+    // ローカルで「前ノート」から「新フォルダ」へ移動されたノート(baseSha: null, dirty: true)
+    await db.notes.put({
+      id: 'a', title: 'タイトルA', folder: '新フォルダ', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-10-15T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文A', baseSha: null, dirty: true,
+    })
+    const github = githubStub({
+      getTree: vi.fn().mockResolvedValue({
+        tree: [
+          { path: 'folders.json', sha: 'folders-sha' },
+          { path: 'notes/前ノート/a.md', sha: 'old-sha' },
+        ],
+        truncated: false,
+      }),
+      putContent: vi.fn().mockResolvedValue({ content: { sha: 'new-sha' } }),
+      deleteContent: vi.fn().mockResolvedValue(undefined),
+    })
+
+    const result = await fullSync({ token: 't', owner: 'o', repo: 'r' }, github as never)
+
+    expect(result.pushed).toBe(1)
+    expect(github.putContent).toHaveBeenCalledWith('o', 'r', 'notes/新フォルダ/a.md', expect.anything(), null, 't')
+    expect(github.deleteContent).toHaveBeenCalledWith('o', 'r', 'notes/前ノート/a.md', 'old-sha', 't')
+
+    const persisted = await db.notes.get('a')
+    expect(persisted?.folder).toBe('新フォルダ')
+    expect(persisted?.dirty).toBe(false)
+    expect(persisted?.baseSha).toBe('new-sha')
+  })
 })
+

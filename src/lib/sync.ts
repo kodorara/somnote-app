@@ -9,10 +9,17 @@ export interface PullTarget {
   folder: string
 }
 
+export interface DeleteTarget {
+  id: string
+  folder: string
+  sha: string
+}
+
 export interface SyncPlan {
   toPush: string[] // ローカル優先でpushするノートID
   toPull: PullTarget[] // 新規取得または上書き取得するノート(リモートが新しい/未知のノート)
   conflicts: string[] // 両方変化しているノートID(ユーザー解決が必要)
+  toDelete: DeleteTarget[] // フォルダ移動などで不要になった旧パス
 }
 
 // 衝突が発生したノートをユーザーに提示・解決してもらうための情報一式。
@@ -41,7 +48,7 @@ function parseNotePath(path: string): PullTarget | null {
 export function planSync(localNotes: StoredNote[], remoteTree: Pick<TreeEntry, 'path' | 'sha'>[]): SyncPlan {
   const remoteByPath = new Map(remoteTree.map((e) => [e.path, e.sha]))
   const localById = new Map(localNotes.map((n) => [n.id, n]))
-  const plan: SyncPlan = { toPush: [], toPull: [], conflicts: [] }
+  const plan: SyncPlan = { toPush: [], toPull: [], conflicts: [], toDelete: [] }
 
   for (const n of localNotes) {
     const remoteSha = remoteByPath.get(notePath(n.folder, n.id))
@@ -59,12 +66,17 @@ export function planSync(localNotes: StoredNote[], remoteTree: Pick<TreeEntry, '
     }
   }
 
-  // リモートに存在するが、このデバイスのローカルには一度も現れていないノート
-  // (他デバイスでの新規作成、または初回起動時の全件インポート)を検出する
+  // リモートに存在するノートを走査し、
+  // 1) 未知のノート(他端末での新規作成等)をtoPullへ
+  // 2) フォルダ移動により旧パスがリモートに残っているものをtoDeleteへ
   for (const entry of remoteTree) {
     const target = parseNotePath(entry.path)
-    if (target && !localById.has(target.id)) {
+    if (!target) continue
+    const local = localById.get(target.id)
+    if (!local) {
       plan.toPull.push(target)
+    } else if (local.folder !== target.folder) {
+      plan.toDelete.push({ id: target.id, folder: target.folder, sha: entry.sha })
     }
   }
 
@@ -74,7 +86,9 @@ export function planSync(localNotes: StoredNote[], remoteTree: Pick<TreeEntry, '
 export interface GithubLike {
   putContent: (folder: string, id: string, content: string, baseSha: string | null) => Promise<{ content: { sha: string } }>
   getContent: (folder: string, id: string) => Promise<{ sha: string; content: string }>
+  deleteContent?: (folder: string, id: string, sha: string) => Promise<void>
 }
+
 
 // baseSha===nullでのpush(新規作成)は、直前の試行がモバイル回線の瞬断等でレスポンスだけ
 // 失われ、実際にはGitHub側で作成が成功しているケースがありうる。その場合GitHubは
@@ -122,6 +136,7 @@ export async function runSync(
   const byId = new Map(localNotes.map((n) => [n.id, { ...n }]))
 
   // push(書き込み)は設計書3.3節の方針通り逐次実行する
+  const pushedSuccessfully = new Set<string>()
   for (const id of plan.toPush) {
     const n = byId.get(id)
     if (!n) continue
@@ -129,7 +144,21 @@ export async function runSync(
     const res = await pushNote(github, n, content)
     n.dirty = false
     n.baseSha = res.content.sha
+    pushedSuccessfully.add(id)
   }
+
+  // 旧パスの削除:
+  // 新パスへのpushが成功したノート、またはローカルで既に未同期(dirty)でないノートについて、
+  // リモートに残っている旧パスのファイルを削除する
+  if (github.deleteContent && plan.toDelete.length > 0) {
+    for (const del of plan.toDelete) {
+      const local = byId.get(del.id)
+      if (local && (pushedSuccessfully.has(del.id) || !local.dirty)) {
+        await github.deleteContent(del.folder, del.id, del.sha)
+      }
+    }
+  }
+
 
   // pull(読み取り)は並列バッチで処理する
   let pulled = 0

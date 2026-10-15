@@ -57,7 +57,19 @@ describe('planSync', () => {
     const plan = planSync(local, remoteTree)
     expect(plan.toPull).toEqual([])
   })
+
+  it('marks old path for deletion when a note has been moved to a different folder locally', () => {
+    // ローカルでは新フォルダ「仕事」に移動済み、リモートツリーには旧フォルダ「日記」に残っている
+    const local = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+    const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toPush).toEqual(['a'])
+    expect(plan.toPull).toEqual([])
+    expect(plan.toDelete).toEqual([{ id: 'a', folder: '日記', sha: 'sha-old' }])
+  })
 })
+
 
 describe('runSync', () => {
   it('pushes dirty notes and clears their dirty flag with new baseSha', async () => {
@@ -195,4 +207,38 @@ describe('runSync', () => {
     expect(bNote?.seq).toBe(0)
     expect(aNote?.seq).toBe(1)
   })
+
+  it('deletes old path on remote after successfully pushing a moved note to new path', async () => {
+    // ローカルで「日記」から「仕事」に移動したノート
+    const localNotes = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+    const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
+    const github = {
+      putContent: vi.fn().mockResolvedValue({ content: { sha: 'sha-new' } }),
+      getContent: vi.fn(),
+      deleteContent: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const result = await runSync(localNotes, remoteTree, github)
+
+    // 新パスへpush成功
+    expect(github.putContent).toHaveBeenCalledWith('仕事', 'a', expect.anything(), null)
+    // 旧パスのDELETEが呼ばれる
+    expect(github.deleteContent).toHaveBeenCalledWith('日記', 'a', 'sha-old')
+    expect(result.updated.find((n) => n.id === 'a')?.dirty).toBe(false)
+  })
+
+  it('does not delete old path if pushing to new path fails', async () => {
+    const localNotes = [note({ id: 'a', folder: '仕事', dirty: true, baseSha: null })]
+    const remoteTree = [{ path: 'notes/日記/a.md', sha: 'sha-old' }]
+    const github = {
+      putContent: vi.fn().mockRejectedValue(new Error('Network error on push')),
+      getContent: vi.fn(),
+      deleteContent: vi.fn(),
+    }
+
+    await expect(runSync(localNotes, remoteTree, github)).rejects.toThrow('Network error on push')
+    // 新パスのpushが失敗したので旧パスは削除されないこと
+    expect(github.deleteContent).not.toHaveBeenCalled()
+  })
 })
+

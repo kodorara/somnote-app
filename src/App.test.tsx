@@ -119,13 +119,16 @@ describe('creating a new note after navigating back', () => {
     })
 
     const { container } = render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
     // 起動直後の空ドラフトを離れ、一覧→既存メモを開く(新規作成ボタンのテストのため一覧画面へ)
-    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
     fireEvent.click(await screen.findByText('既存メモ'))
-    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('既存の本文')
+    await screen.findByDisplayValue('既存の本文')
 
     // 一覧へ戻り、「+ 新規作成」で新しい空メモを開けること
+
     fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
     fireEvent.click(screen.getByRole('button', { name: '+ 新規作成' }))
@@ -229,8 +232,57 @@ describe('moving a note to a different folder', () => {
     const moved = await db.notes.get('n1')
     expect(moved?.folder).toBe('仕事')
     expect(moved?.dirty).toBe(true)
+    expect(moved?.baseSha).toBeNull()
+  })
+
+  it('resets search filter so all notes in the new folder are displayed after moving', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    await db.notes.put({
+      id: 'n1', title: '移動するメモ', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: 'キーワードA', baseSha: 'sha1', dirty: false,
+    })
+    await db.notes.put({
+      id: 'n2', title: '仕事の既存メモ', folder: '仕事', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: 'キーワードB', baseSha: 'sha2', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [
+        { path: 'notes/前ノート/n1.md', sha: 'sha1' },
+        { path: 'notes/仕事/n2.md', sha: 'sha2' },
+      ],
+      truncated: false,
+    })
+    const { container } = render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    // 検索窓に「キーワードA」を入力して検索を実行
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'キーワードA' } })
+
+    // n1を開いて「仕事」フォルダに移動
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    fireEvent.click(await screen.findByText('移動するメモ'))
+    await screen.findByDisplayValue('キーワードA')
+
+    fireEvent.change(screen.getByLabelText('フォルダ移動'), { target: { value: '仕事' } })
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    // 「← 戻る」でフォルダ一覧に戻り、「仕事」フォルダを選択
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+    fireEvent.click(await screen.findByRole('button', { name: '仕事' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    // 検索状態がリセットされているため、仕事フォルダ内の全メモ(n1, n2)が表示されること
+    expect(await screen.findByText('移動するメモ')).toBeInTheDocument()
+    expect(await screen.findByText('仕事の既存メモ')).toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('')
   })
 })
+
 
 describe('startup folder selection', () => {
   it('opens the draft in the folder with the smallest seq, not insertion order', async () => {
@@ -272,3 +324,45 @@ describe('reordering folders', () => {
     await waitFor(() => expect(putContentSpy).toHaveBeenCalledWith('o', 'somnote-data', 'folders.json', expect.any(String), null, 't'))
   })
 })
+
+describe('search integration', () => {
+  it('filters visible notes based on search query without freezing', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'n1', title: '散歩の日記', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '公園を歩いた', baseSha: 'sha1', dirty: false,
+    })
+    await db.notes.put({
+      id: 'n2', title: '読書メモ', folder: '前ノート', seq: 1, tags: [],
+      createdAt: '2026-01-02T00:00:00+09:00', updatedAt: '2026-01-02T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '哲学の本を読んだ', baseSha: 'sha2', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [
+        { path: 'notes/前ノート/n1.md', sha: 'sha1' },
+        { path: 'notes/前ノート/n2.md', sha: 'sha2' },
+      ],
+      truncated: false,
+    })
+    render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    // 検索窓に「哲学」を入力
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '哲学' } })
+
+    // デバウンス待機後、読書メモのみが表示され、散歩の日記は非表示になること
+    await waitFor(() => {
+      expect(screen.queryByText('散歩の日記')).not.toBeInTheDocument()
+      expect(screen.getByText('読書メモ')).toBeInTheDocument()
+    })
+
+    // 検索窓をクリアすると両方表示されること
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } })
+    await waitFor(() => {
+      expect(screen.getByText('散歩の日記')).toBeInTheDocument()
+      expect(screen.getByText('読書メモ')).toBeInTheDocument()
+    })
+  })
+})
+

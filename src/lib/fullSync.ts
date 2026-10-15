@@ -1,7 +1,7 @@
 import { db, type StoredFolder } from './db'
 import { parseNote } from './frontmatter'
 import { runSync, type GithubLike, type ConflictItem } from './sync'
-import type { getTree, getContent, putContent } from './github'
+import type { getTree, getContent, putContent, deleteContent } from './github'
 import type { GithubSettings } from './githubSettings'
 
 // github.tsの実際の関数シグネチャをそのまま型として使う。FullSyncGithubをGithubLike
@@ -11,6 +11,7 @@ export interface FullSyncGithub {
   getTree: typeof getTree
   getContent: typeof getContent
   putContent: typeof putContent
+  deleteContent: typeof deleteContent
 }
 
 function notePathOf(folder: string, id: string): string {
@@ -47,7 +48,10 @@ export async function fullSync(
     putContent: (folder, id, content, baseSha) =>
       github.putContent(owner, repo, notePathOf(folder, id), content, baseSha, token),
     getContent: (folder, id) => github.getContent(owner, repo, notePathOf(folder, id), token),
+    deleteContent: (folder, id, sha) =>
+      github.deleteContent(owner, repo, notePathOf(folder, id), sha, token),
   }
+
 
   // ローカルが空の初回起動でも、2回目以降の通常同期でも同じ経路を通る
   // (空の場合は全件が「ローカルに無い新規リモートノート」として自然にtoPullに入る)

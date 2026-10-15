@@ -116,3 +116,22 @@ export async function putContent(
   if (!res.ok) throw await describeError('putContent', res)
   return res.json() as Promise<{ content: { sha: string } }>
 }
+
+export async function deleteContent(
+  owner: string,
+  repo: string,
+  path: string,
+  sha: string,
+  token: string,
+): Promise<void> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/contents/${encodePath(path)}`, {
+    method: 'DELETE',
+    headers: { ...headers(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: `delete ${path}`,
+      sha,
+    }),
+  })
+  if (!res.ok) throw await describeError('deleteContent', res)
+}
+
