@@ -23,6 +23,7 @@ import { ConflictResolver } from './components/ConflictResolver'
 import { Settings } from './components/Settings'
 import { AppLock } from './components/AppLock'
 import { checkPassword, isUnlocked, setUnlocked } from './lib/appLock'
+import { writeEmergencySave, readEmergencySave, clearEmergencySave } from './lib/emergencySave'
 import './App.css'
 
 type MobileScreen = 'folders' | 'notes' | 'editor'
@@ -141,6 +142,25 @@ export default function App() {
     setMobileScreen('editor')
   }
 
+  // pagehide/beforeunload時に緊急退避された本文があれば、IndexedDB側より新しい場合に
+  // 限って復元する。新規未保存の下書き(IndexedDBにまだ存在しないノート)は復元できない
+  // (フォルダ等の情報が無いため)。これは「一度も保存されないまま即終了した」場合のみの
+  // 残余リスクであり、既存ノートの編集は30秒間隔の自動保存・pagehide双方でカバーされる。
+  const recoverEmergencySave = async () => {
+    const save = readEmergencySave()
+    if (!save) return
+    const existing = await db.notes.get(save.noteId)
+    if (existing && save.updatedAt > existing.updatedAt) {
+      await db.notes.put({
+        ...existing,
+        body: save.body,
+        title: deriveTitle(save.body),
+        updatedAt: save.updatedAt,
+        dirty: true,
+      })
+    }
+    clearEmergencySave()
+  }
 
   useEffect(() => {
     if (!settings) return
@@ -149,6 +169,7 @@ export default function App() {
       if (syncInFlightRef.current) return
       syncInFlightRef.current = true
       try {
+        await recoverEmergencySave()
         if (navigator.onLine) {
           try {
             const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
@@ -226,13 +247,22 @@ export default function App() {
     await saveNote(activeNote)
   }
 
-  const autoSaveActiveNote = async () => {
+  // 保存すべき未保存の変更があるかどうかを判定し、あればそのノートを返す。
+  // 自動保存系のすべてのトリガー(インターバル・visibilitychange・pagehide等)から
+  // 共通で使う判定ロジック。
+  const getPendingSaveNote = (): StoredNote | null => {
     const note = activeNoteRef.current
-    if (!note) return
-    if (note.body === lastSavedBodyRef.current) return
+    if (!note) return null
+    if (note.body === lastSavedBodyRef.current) return null
     if (shouldDiscardDraft(note.body) && !notesRef.current.some((n) => n.id === note.id)) {
-      return
+      return null
     }
+    return note
+  }
+
+  const autoSaveActiveNote = async () => {
+    const note = getPendingSaveNote()
+    if (!note) return
     await saveNote(note)
   }
 
@@ -249,13 +279,19 @@ export default function App() {
       }
     }
 
-    // タブクローズ・ページ離脱(モバイル/PC)
+    // タブクローズ・ページ離脱(モバイル/PC)。非同期のIndexedDB書き込みが完了する前に
+    // プロセスごと終了する可能性があるため、保険として同期的なlocalStorage書き込みも
+    // あわせて行う(次回起動時にrecoverEmergencySaveで回収する)。
     const handlePageHide = () => {
+      const note = getPendingSaveNote()
+      if (note) writeEmergencySave({ noteId: note.id, body: note.body, updatedAt: note.updatedAt })
       void autoSaveActiveNote()
     }
 
-    // デスクトップでのタブ閉じ/リロード
+    // デスクトップでのタブ閉じ/リロード。理由はhandlePageHideと同じ。
     const handleBeforeUnload = () => {
+      const note = getPendingSaveNote()
+      if (note) writeEmergencySave({ noteId: note.id, body: note.body, updatedAt: note.updatedAt })
       void autoSaveActiveNote()
     }
 

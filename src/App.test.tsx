@@ -246,6 +246,69 @@ describe('autosave and departure save', () => {
       expect(all.some((n) => n.body === 'ページ離脱保存テスト')).toBe(true)
     })
   })
+
+  it('synchronously writes an emergency localStorage backup on pagehide, as a fallback for when the async IndexedDB write does not finish before the page is torn down', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+
+    fireEvent.change(textarea, { target: { value: '緊急退避テスト' } })
+    fireEvent(window, new Event('pagehide'))
+
+    const raw = localStorage.getItem('somnote.emergencySave')
+    expect(raw).toBeTruthy()
+    expect(JSON.parse(raw as string).body).toBe('緊急退避テスト')
+  })
+
+  it('recovers an emergency-saved body on next startup when it is newer than what is in IndexedDB', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'n1', title: '古いタイトル', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '保存済みの古い本文', baseSha: 'sha1', dirty: false,
+    })
+    localStorage.setItem('somnote.emergencySave', JSON.stringify({
+      noteId: 'n1', body: '復元されるべき新しい本文', updatedAt: '2026-10-15T12:00:00+09:00',
+    }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    await waitFor(async () => {
+      const recovered = await db.notes.get('n1')
+      expect(recovered?.body).toBe('復元されるべき新しい本文')
+      expect(recovered?.dirty).toBe(true)
+    })
+    expect(localStorage.getItem('somnote.emergencySave')).toBeNull()
+  })
+
+  it('does not overwrite IndexedDB when the emergency save is older than what is already stored', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-10-15T12:00:00+09:00',
+      deleted: false, llmLinks: [], body: '最新の本文', baseSha: 'sha1', dirty: false,
+    })
+    localStorage.setItem('somnote.emergencySave', JSON.stringify({
+      noteId: 'n1', body: '古い緊急退避の本文', updatedAt: '2026-01-01T00:00:00+09:00',
+    }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    await waitFor(async () => {
+      expect(localStorage.getItem('somnote.emergencySave')).toBeNull()
+    })
+    const note = await db.notes.get('n1')
+    expect(note?.body).toBe('最新の本文')
+  })
 })
 
 describe('folder management', () => {

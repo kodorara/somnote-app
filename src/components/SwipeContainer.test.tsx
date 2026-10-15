@@ -87,4 +87,47 @@ describe('SwipeContainer', () => {
     expect(onSwipeLeft).not.toHaveBeenCalled()
     expect(onSwipeRight).not.toHaveBeenCalled()
   })
+
+  it('ignores pointer interaction starting inside a horizontally-scrollable element (e.g. a wide code block)', () => {
+    const onSwipeLeft = vi.fn()
+    const onSwipeRight = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={onSwipeLeft} onSwipeRight={onSwipeRight}>
+        <pre data-testid="code-block" style={{ overflowX: 'auto' }}>
+          <code>とても長い1行のコード...</code>
+        </pre>
+      </SwipeContainer>,
+    )
+
+    const pre = screen.getByTestId('code-block')
+    // jsdomはレイアウトを計算しないため、scrollWidth/clientWidthを明示的にモックする
+    Object.defineProperty(pre, 'scrollWidth', { value: 2000, configurable: true })
+    Object.defineProperty(pre, 'clientWidth', { value: 300, configurable: true })
+
+    fireEvent.pointerDown(pre, { clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(pre, { clientX: 100, clientY: 100 }) // deltaX = -100 (通常ならスワイプ判定される量)
+
+    expect(onSwipeLeft).not.toHaveBeenCalled()
+    expect(onSwipeRight).not.toHaveBeenCalled()
+  })
+
+  it('still swipes when starting on an element whose scrollWidth exceeds clientWidth but overflow-x is not scrollable', () => {
+    // overflow-xがvisible(既定)のままだと、要素自体は横スクロール領域として機能しない
+    // ため、スワイプを妨げてはならない
+    const onSwipeRight = vi.fn()
+    render(
+      <SwipeContainer onSwipeRight={onSwipeRight}>
+        <div data-testid="overflowing-but-not-scrollable">はみ出すが横スクロールはしない要素</div>
+      </SwipeContainer>,
+    )
+
+    const el = screen.getByTestId('overflowing-but-not-scrollable')
+    Object.defineProperty(el, 'scrollWidth', { value: 2000, configurable: true })
+    Object.defineProperty(el, 'clientWidth', { value: 300, configurable: true })
+
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 180, clientY: 100 })
+
+    expect(onSwipeRight).toHaveBeenCalledTimes(1)
+  })
 })

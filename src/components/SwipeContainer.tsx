@@ -8,6 +8,21 @@ interface Props {
   threshold?: number
 }
 
+// targetからroot(SwipeContainer自身)までの祖先を辿り、横方向にスクロール可能な
+// 要素(コードブロックや幅の広い表など)があるかを調べる。固定クラス名のホワイト
+// リストと違い、将来追加されるどんな横スクロール要素にも後付け対応不要で効く。
+function hasHorizontallyScrollableAncestor(target: HTMLElement | null, root: HTMLElement | null): boolean {
+  let node: HTMLElement | null = target
+  while (node && node !== root) {
+    if (node.scrollWidth > node.clientWidth) {
+      const overflowX = getComputedStyle(node).overflowX
+      if (overflowX === 'auto' || overflowX === 'scroll') return true
+    }
+    node = node.parentElement
+  }
+  return false
+}
+
 export function SwipeContainer({
   onSwipeLeft,
   onSwipeRight,
@@ -17,9 +32,11 @@ export function SwipeContainer({
 }: Props) {
   const startPos = useRef<{ x: number; y: number } | null>(null)
   const isExcluded = useRef<boolean>(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    // フォーム入力要素やドラッグハンドル上での操作はスワイプから除外
+    // フォーム入力要素やドラッグハンドル、横スクロール可能な要素上での操作は
+    // スワイプから除外する
     const target = e.target as HTMLElement | null
     if (
       target &&
@@ -29,7 +46,8 @@ export function SwipeContainer({
         target.isContentEditable ||
         target.closest('.folder-drag-handle') ||
         target.closest('.action-bar-btn') ||
-        target.closest('.action-bar-select'))
+        target.closest('.action-bar-select') ||
+        hasHorizontallyScrollableAncestor(target, rootRef.current))
     ) {
       isExcluded.current = true
       return
@@ -70,6 +88,7 @@ export function SwipeContainer({
 
   return (
     <div
+      ref={rootRef}
       className={className}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
