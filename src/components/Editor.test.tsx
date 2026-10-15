@@ -21,4 +21,15 @@ describe('Editor', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '新しい本文' } })
     expect(onChange).toHaveBeenCalledWith('新しい本文')
   })
+
+  it('highlights matched query in markdown preview mode', () => {
+    const { container } = render(
+      <Editor body="これは哲学の探求についてのメモです。" onChange={() => {}} highlightQuery="哲学" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'プレビュー' }))
+    const mark = container.querySelector('mark.search-highlight')
+    expect(mark).toBeInTheDocument()
+    expect(mark?.textContent).toBe('哲学')
+  })
 })
+

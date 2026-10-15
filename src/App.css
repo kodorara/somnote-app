@@ -21,6 +21,32 @@
    スマホ幅(下の@media参照)でのみ表示する。 */
 .mobile-only { display: none; }
 
+/* — search bar — */
+.search-bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 140px;
+  max-width: 140px;
+  transition: width 0.24s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.search-bar-wrap:focus-within,
+.search-bar-wrap.has-value {
+  width: 260px;
+  max-width: 260px;
+}
+.search-input {
+  width: 100%;
+}
+.search-highlight {
+  background-color: var(--color-accent-800);
+  color: var(--color-accent-100);
+  border-radius: var(--radius-sm);
+  padding: 1px 3px;
+  font-weight: 600;
+}
+
+
 .sync-progress,
 .sync-error {
   margin: 0;
@@ -299,7 +325,18 @@
 @media (max-width: 768px) {
   .mobile-only { display: inline-flex; }
 
+  .search-bar-wrap {
+    width: 110px;
+    max-width: 110px;
+  }
+  .search-bar-wrap:focus-within,
+  .search-bar-wrap.has-value {
+    width: 100%;
+    max-width: 200px;
+  }
+
   .columns {
+
     position: relative;
     overflow: hidden;
     min-height: 80vh;

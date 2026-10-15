@@ -405,7 +405,7 @@ describe('search integration', () => {
       deleted: false, llmLinks: [], body: '公園を歩いた', baseSha: 'sha1', dirty: false,
     })
     await db.notes.put({
-      id: 'n2', title: '読書メモ', folder: '前ノート', seq: 1, tags: [],
+      id: 'n2', title: '哲学の読書メモ', folder: '前ノート', seq: 1, tags: [],
       createdAt: '2026-01-02T00:00:00+09:00', updatedAt: '2026-01-02T00:00:00+09:00',
       deleted: false, llmLinks: [], body: '哲学の本を読んだ', baseSha: 'sha2', dirty: false,
     })
@@ -425,15 +425,70 @@ describe('search integration', () => {
     // デバウンス待機後、読書メモのみが表示され、散歩の日記は非表示になること
     await waitFor(() => {
       expect(screen.queryByText('散歩の日記')).not.toBeInTheDocument()
-      expect(screen.getByText('読書メモ')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /哲学の読書メモ/ })).toBeInTheDocument()
     })
+
+    // タイトル内のマッチ箇所がハイライトされていること
+    expect(screen.getByRole('button', { name: /哲学の読書メモ/ }).querySelector('mark.search-highlight')).toBeInTheDocument()
+
+    // 読書メモを開いてプレビューに切り替えると、本文中の「哲学」もハイライトされること
+    fireEvent.click(screen.getByRole('button', { name: /哲学の読書メモ/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'プレビュー' }))
+    const previewMark = document.querySelector('.preview mark.search-highlight')
+    expect(previewMark).toBeInTheDocument()
+    expect(previewMark?.textContent).toBe('哲学')
 
     // 検索窓をクリアすると両方表示されること
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } })
     await waitFor(() => {
       expect(screen.getByText('散歩の日記')).toBeInTheDocument()
-      expect(screen.getByText('読書メモ')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /哲学の読書メモ/ })).toBeInTheDocument()
     })
   })
+
+  it('searches across all folders when initiated from folders screen', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    await db.notes.put({
+      id: 'n1', title: '散歩の日記', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '公園を歩いた', baseSha: 'sha1', dirty: false,
+    })
+    await db.notes.put({
+      id: 'n2', title: 'プロジェクト計画', folder: '仕事', seq: 0, tags: [],
+      createdAt: '2026-01-02T00:00:00+09:00', updatedAt: '2026-01-02T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '来期のロードマップ', baseSha: 'sha2', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [
+        { path: 'notes/前ノート/n1.md', sha: 'sha1' },
+        { path: 'notes/仕事/n2.md', sha: 'sha2' },
+      ],
+      truncated: false,
+    })
+    render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    // フォルダ画面(folders)まで戻る
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }))
+    fireEvent.click(await screen.findByRole('button', { name: '← 戻る' }))
+    await screen.findByLabelText('新しいフォルダ名')
+
+    // フォルダ一覧画面での検索プレースホルダーは「全メモを検索」
+    expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', '全メモを検索')
+
+    // 検索窓に「ロードマップ」(仕事フォルダのメモ)を入力
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ロードマップ' } })
+
+    // 全フォルダ横断で検索され、一覧画面に「プロジェクト計画」が表示されること
+    expect(await screen.findByText('プロジェクト計画')).toBeInTheDocument()
+    expect(screen.queryByText('散歩の日記')).not.toBeInTheDocument()
+
+    // クリックすると仕事フォルダのメモが開かれること
+    fireEvent.click(screen.getByText('プロジェクト計画'))
+    await screen.findByDisplayValue('来期のロードマップ')
+    expect(screen.getByLabelText('フォルダ移動')).toHaveValue('仕事')
+  })
 })
+
 

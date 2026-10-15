@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   value?: string
+  placeholder?: string
   onQueryChange: (query: string) => void
   debounceMs?: number
 }
 
-export function SearchBar({ value = '', onQueryChange, debounceMs = 200 }: Props) {
+export function SearchBar({
+  value = '',
+  placeholder = '検索',
+  onQueryChange,
+  debounceMs = 200,
+}: Props) {
   const [innerValue, setInnerValue] = useState(value)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -30,14 +36,17 @@ export function SearchBar({ value = '', onQueryChange, debounceMs = 200 }: Props
   }, [])
 
   return (
-    <input
-      type="search"
-      role="searchbox"
-      className="input"
-      placeholder="検索(タイトル・本文・タグ)"
-      value={innerValue}
-      onChange={handleChange}
-    />
+    <div className={`search-bar-wrap${innerValue ? ' has-value' : ''}`}>
+      <input
+        type="search"
+        role="searchbox"
+        className="input search-input"
+        placeholder={placeholder}
+        value={innerValue}
+        onChange={handleChange}
+      />
+    </div>
   )
 }
+
 

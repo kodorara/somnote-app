@@ -1,3 +1,5 @@
+import { HighlightText } from './HighlightText'
+
 export type SortBy = 'seq' | 'createdDesc' | 'createdAsc' | 'updatedDesc' | 'updatedAsc'
 
 interface NoteSummary {
@@ -17,6 +19,7 @@ interface Props {
   tagFilter: string | null
   wordFilter: string
   sortBy: SortBy
+  highlightQuery?: string
 }
 
 const SORTERS: Record<SortBy, (a: NoteSummary, b: NoteSummary) => number> = {
@@ -35,7 +38,7 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10).replace(/-/g, '/')
 }
 
-export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, sortBy }: Props) {
+export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, sortBy, highlightQuery }: Props) {
   const visible = notes.filter((n) => !n.deleted)
   const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
   const word = wordFilter.trim().toLowerCase()
@@ -46,7 +49,9 @@ export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, s
       {sorted.map((n) => (
         <li key={n.id} role="listitem">
           <button type="button" aria-current={n.id === selectedId} onClick={() => onSelect(n.id)}>
-            <span className="note-title">{n.title}</span>
+            <span className="note-title">
+              <HighlightText text={n.title} query={highlightQuery ?? ''} />
+            </span>
             <span className="note-meta">
               作成 {formatDate(n.createdAt)} ・ 編集 {formatDate(n.updatedAt)}
             </span>
@@ -56,3 +61,4 @@ export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, s
     </ul>
   )
 }
+

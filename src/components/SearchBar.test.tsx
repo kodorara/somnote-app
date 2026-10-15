@@ -55,5 +55,17 @@ describe('SearchBar', () => {
     rerender(<SearchBar value="" onQueryChange={onQueryChange} />)
     expect(screen.getByRole('searchbox')).toHaveValue('')
   })
+
+  it('renders default placeholder "検索" and applies has-value class when input has text', () => {
+    const onQueryChange = vi.fn()
+    const { container, rerender } = render(<SearchBar onQueryChange={onQueryChange} />)
+    const searchbox = screen.getByRole('searchbox')
+    expect(searchbox).toHaveAttribute('placeholder', '検索')
+    expect(container.querySelector('.search-bar-wrap')).not.toHaveClass('has-value')
+
+    rerender(<SearchBar value="入力中" onQueryChange={onQueryChange} />)
+    expect(container.querySelector('.search-bar-wrap')).toHaveClass('has-value')
+  })
 })
+
 

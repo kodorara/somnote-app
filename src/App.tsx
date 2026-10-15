@@ -74,12 +74,15 @@ export default function App() {
   }
 
   const [searchResetKey, setSearchResetKey] = useState(0)
+  const [globalSearchResults, setGlobalSearchResults] = useState<StoredNote[] | null>(null)
 
   const resetSearch = () => {
     setSearchQuery('')
     setSearchResultIds(null)
+    setGlobalSearchResults(null)
     setSearchResetKey((k) => k + 1)
   }
+
 
 
   const loadFolderAndDraft = async (allFolders: StoredFolder[]) => {
@@ -344,24 +347,48 @@ export default function App() {
     }
   }
 
-  const runSearch = (query: string) => {
+  const searchPlaceholder = useMemo(() => {
+    if (mobileScreen === 'folders') return '全メモを検索'
+    if (mobileScreen === 'notes') return selectedFolder ? `"${selectedFolder}"内を検索` : 'フォルダ内を検索'
+    return '本文内を検索'
+  }, [mobileScreen, selectedFolder])
+
+  const runSearch = async (query: string) => {
     setSearchQuery(query)
     if (!query) {
       setSearchResultIds(null)
+      setGlobalSearchResults(null)
       return
     }
     if (!searchIndexRef.current) {
       setSearchResultIds([])
+      setGlobalSearchResults([])
       return
     }
-    setSearchResultIds(search(searchIndexRef.current, query))
+    const matchedIds = search(searchIndexRef.current, query)
+    const idSet = new Set(matchedIds)
+
+    if (mobileScreen === 'folders') {
+      // フォルダ一覧画面: 全メモ対象 (全フォルダ横断検索)
+      const all = await db.notes.toArray()
+      const results = all.filter((n) => !n.deleted && idSet.has(n.id))
+      setGlobalSearchResults(results)
+      setSearchResultIds(matchedIds)
+      setMobileScreen('notes')
+    } else {
+      // フォルダ画面 / エディタ画面
+      setGlobalSearchResults(null)
+      setSearchResultIds(matchedIds)
+    }
   }
 
   const visibleNotes = useMemo(() => {
+    if (globalSearchResults !== null) return globalSearchResults
     if (!searchResultIds) return notes
     const idSet = new Set(searchResultIds)
     return notes.filter((n) => idSet.has(n.id))
-  }, [notes, searchResultIds])
+  }, [notes, searchResultIds, globalSearchResults])
+
 
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>()
@@ -439,7 +466,12 @@ export default function App() {
             ← 戻る
           </button>
         )}
-        <SearchBar key={searchResetKey} value={searchQuery} onQueryChange={runSearch} />
+        <SearchBar
+          key={searchResetKey}
+          value={searchQuery}
+          placeholder={searchPlaceholder}
+          onQueryChange={runSearch}
+        />
 
         <SyncStatusBadge online={online} pendingCount={pendingCount} onSyncNow={handleSyncNow} />
       </div>
@@ -496,10 +528,17 @@ export default function App() {
             tagFilter={tagFilter}
             wordFilter={wordFilter}
             sortBy={sortBy}
+            highlightQuery={searchQuery}
             onSelect={async (id) => {
               await leaveEditor()
               const n = await db.notes.get(id)
-              if (n) setActiveNote(n)
+              if (n) {
+                if (selectedFolder !== n.folder) {
+                  setSelectedFolder(n.folder)
+                  setNotes(await db.notes.where('folder').equals(n.folder).toArray())
+                }
+                setActiveNote(n)
+              }
               setMobileScreen('editor')
             }}
           />
@@ -507,8 +546,9 @@ export default function App() {
         <div className="col-editor">
           {activeNote && (
             <>
-              <Editor body={activeNote.body} onChange={updateBody} />
+              <Editor body={activeNote.body} onChange={updateBody} highlightQuery={searchQuery} />
               <div className="editor-actions">
+
                 <button type="button" className="btn btn-primary" onClick={saveActiveNote}>
                   保存
                 </button>

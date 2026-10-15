@@ -73,4 +73,12 @@ describe('NoteList', () => {
     expect(items[0]).toHaveTextContent('作成 2026/10/10')
     expect(items[0]).toHaveTextContent('編集 2026/10/09')
   })
+
+  it('highlights matched query in note title', () => {
+    const { container } = render(<NoteList {...defaultProps} notes={notes} highlightQuery="メモ" />)
+    const marks = container.querySelectorAll('.note-title mark.search-highlight')
+    expect(marks).toHaveLength(2)
+    expect(marks[0].textContent).toBe('メモ')
+  })
 })
+
