@@ -45,6 +45,7 @@ export default function App() {
   const [editorPreviewMode, setEditorPreviewMode] = useState<'edit' | 'preview'>('edit')
   const [isLlmOpen, setIsLlmOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
 
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
@@ -60,6 +61,17 @@ export default function App() {
     const count = await db.notes.filter((n) => !!n.deleted).count()
     setTrashCount(count)
   }
+
+  const handleBackupRestored = async () => {
+    const allFolders = await db.folders.toArray()
+    setFolders(allFolders)
+    await loadFolderAndDraft(allFolders)
+    await rebuildSearchIndex()
+    await loadTrashCount()
+    resetSearch()
+    setIsSettingsOpen(false)
+  }
+
 
 
   useEffect(() => {
@@ -548,9 +560,11 @@ export default function App() {
           saveGithubSettings(s)
           setSettings(s)
         }}
+        onBackupRestored={handleBackupRestored}
       />
     )
   }
+
 
   return (
     <div className="app">
@@ -603,7 +617,9 @@ export default function App() {
               onCreate={handleCreateFolder}
               onDelete={handleDeleteFolder}
               onReorder={handleReorderFolders}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
+
           </div>
 
           <div className="col-notes">
@@ -717,6 +733,18 @@ export default function App() {
           </div>
         </SwipeContainer>
       </PullToRefresh>
+      {isSettingsOpen && (
+        <Settings
+          initial={settings}
+          onSave={(s) => {
+            saveGithubSettings(s)
+            setSettings(s)
+            setIsSettingsOpen(false)
+          }}
+          onClose={() => setIsSettingsOpen(false)}
+          onBackupRestored={handleBackupRestored}
+        />
+      )}
     </div>
   )
 }

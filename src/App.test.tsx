@@ -757,6 +757,78 @@ describe('note history and restore', () => {
   })
 })
 
+describe('settings modal and backup integration', () => {
+  it('opens settings modal from folder list, allows export and import, and closes modal', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    // URL.createObjectURL と revokeObjectURL のモック
+    const createObjectURLMock = vi.fn().mockReturnValue('blob:dummy')
+    const revokeObjectURLMock = vi.fn()
+    window.URL.createObjectURL = createObjectURLMock
+    window.URL.revokeObjectURL = revokeObjectURLMock
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    // フォルダ一覧の下部にある歯車ボタン（「設定を開く」）をクリック
+    const settingsBtn = screen.getByRole('button', { name: '設定を開く' })
+    fireEvent.click(settingsBtn)
+
+    // 設定モーダルが開く
+    const modal = screen.getByRole('dialog', { name: '設定' })
+    expect(modal).toBeInTheDocument()
+
+    // バックアップエクスポートボタンをクリック
+    const exportBtn = screen.getByRole('button', { name: 'バックアップを書き出す (JSON)' })
+    fireEvent.click(exportBtn)
+
+    await waitFor(() => {
+      expect(createObjectURLMock).toHaveBeenCalled()
+    })
+
+    // バックアップインポートをテスト
+    const backupData = {
+      version: 1,
+      exportedAt: '2026-10-15T00:00:00.000Z',
+      folders: [{ folderId: 'imported-folder-1', name: 'インポートフォルダ', color: '#ff5500', seq: 0 }],
+      notes: [
+        {
+          id: 'imported-note-1',
+          title: 'インポートされたノート',
+          folder: 'インポートフォルダ',
+          body: 'インポートされたノート本文',
+          seq: 0,
+          tags: [],
+          llmLinks: [],
+          createdAt: '2026-10-15T00:00:00.000Z',
+          updatedAt: '2026-10-15T00:00:00.000Z',
+        },
+      ],
+    }
+
+    const file = new File([JSON.stringify(backupData)], 'somnote-backup.json', { type: 'application/json' })
+    const fileInput = screen.getByLabelText('バックアップファイルを選択')
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // 復元が完了し、メッセージが表示される
+    expect(await screen.findByText('復元完了: フォルダ1件、メモ1件を読み込みました')).toBeInTheDocument()
+
+    // 閉じるボタンをクリック
+    const closeBtn = screen.getByRole('button', { name: '設定を閉じる' })
+    fireEvent.click(closeBtn)
+
+    // モーダルが閉じる
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '設定' })).not.toBeInTheDocument()
+    })
+
+    // 復元されたフォルダが画面に表示されていること
+    expect(screen.getByRole('button', { name: 'インポートフォルダ' })).toBeInTheDocument()
+  })
+})
+
 
 
 

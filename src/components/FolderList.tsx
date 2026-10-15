@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
-import { TrashIcon } from './icons'
+import { TrashIcon, GearIcon } from './icons'
 
 interface Props {
   folders: StoredFolder[]
@@ -10,7 +10,9 @@ interface Props {
   onDelete: (folder: StoredFolder) => void
   onReorder: (orderedFolderIds: string[]) => void
   trashCount?: number
+  onOpenSettings?: () => void
 }
+
 
 function GripIcon() {
   return (
@@ -33,8 +35,10 @@ export function FolderList({
   onDelete,
   onReorder,
   trashCount,
+  onOpenSettings,
 }: Props) {
   const [newName, setNewName] = useState('')
+
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const draggingId = useRef<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
@@ -173,6 +177,21 @@ export function FolderList({
           追加
         </button>
       </div>
+
+      {onOpenSettings && (
+        <div className="folder-settings-wrap">
+          <button
+            type="button"
+            className="folder-settings-btn"
+            aria-label="設定を開く"
+            onClick={onOpenSettings}
+          >
+            <GearIcon size={16} />
+            <span>設定</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
+

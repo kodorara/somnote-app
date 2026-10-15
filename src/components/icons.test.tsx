@@ -11,6 +11,7 @@ import {
   RefreshIcon,
   CloseIcon,
   HistoryIcon,
+  GearIcon,
 } from './icons'
 
 describe('icons', () => {
@@ -44,7 +45,11 @@ describe('icons', () => {
 
     const { container: c10 } = render(<HistoryIcon />)
     expect(c10.querySelector('svg')).toBeInTheDocument()
+
+    const { container: c11 } = render(<GearIcon />)
+    expect(c11.querySelector('svg')).toBeInTheDocument()
   })
+
 
 
   it('respects custom size and className', () => {

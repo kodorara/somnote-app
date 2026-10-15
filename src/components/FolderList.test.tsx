@@ -98,4 +98,15 @@ describe('FolderList', () => {
     fireEvent.click(trashBtn)
     expect(onSelect).toHaveBeenCalledWith('ゴミ箱')
   })
+
+  it('renders settings button and calls onOpenSettings when clicked', () => {
+    const onOpenSettings = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onOpenSettings={onOpenSettings} />)
+    const settingsBtn = screen.getByRole('button', { name: '設定を開く' })
+    expect(settingsBtn).toBeInTheDocument()
+
+    fireEvent.click(settingsBtn)
+    expect(onOpenSettings).toHaveBeenCalledTimes(1)
+  })
 })
+
