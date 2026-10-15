@@ -90,4 +90,32 @@ describe('EditorActionBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ゴミ箱に移動' }))
     expect(onDelete).toHaveBeenCalledTimes(1)
   })
+
+  it('renders restore button and trash banner when isTrashNote is true', () => {
+    const onRestore = vi.fn()
+    render(
+      <EditorActionBar
+        {...defaultProps}
+        isTrashNote={true}
+        onRestore={onRestore}
+      />,
+    )
+    // 復元ボタンとバナーの「復元する」ボタンの存在確認
+    const iconBtn = screen.getByRole('button', { name: '復元' })
+    const bannerBtn = screen.getByRole('button', { name: '復元する' })
+    expect(iconBtn).toBeInTheDocument()
+    expect(bannerBtn).toBeInTheDocument()
+
+    // ゴミ箱バナーの文言確認
+    expect(screen.getByText('このメモはゴミ箱に入っています')).toBeInTheDocument()
+
+    // 復元ボタンクリックで onRestore が呼ばれる
+    fireEvent.click(iconBtn)
+    expect(onRestore).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(bannerBtn)
+    expect(onRestore).toHaveBeenCalledTimes(2)
+  })
 })
+
+

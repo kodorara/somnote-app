@@ -5,7 +5,7 @@ import { getGithubSettings, saveGithubSettings, type GithubSettings } from './li
 import { buildIndex, search, indexNote, removeNoteFromIndex, type SearchIndex } from './lib/search'
 import { fullSync } from './lib/fullSync'
 import { pushFolders } from './lib/folderSync'
-import { createFolder, deleteFolder, reorderFolders, topFolder } from './lib/folders'
+import { createFolder, deleteFolder, reorderFolders, topFolder, isTrashFolder } from './lib/folders'
 import * as githubClient from './lib/github'
 import type { ConflictItem } from './lib/sync'
 import { FolderList } from './components/FolderList'
@@ -32,6 +32,7 @@ export default function App() {
   const [folders, setFolders] = useState<StoredFolder[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [notes, setNotes] = useState<StoredNote[]>([])
+  const [trashCount, setTrashCount] = useState(0)
   const [activeNote, setActiveNote] = useState<StoredNote | null>(null)
   const [mobileScreen, setMobileScreen] = useState<MobileScreen>('editor')
   const [online, setOnline] = useState(navigator.onLine)
@@ -50,6 +51,12 @@ export default function App() {
   const [folderError, setFolderError] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
   const searchIndexRef = useRef<SearchIndex | null>(null)
+
+  const loadTrashCount = async () => {
+    const count = await db.notes.filter((n) => !!n.deleted).count()
+    setTrashCount(count)
+  }
+
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -110,12 +117,14 @@ export default function App() {
     const folderNotes = await db.notes.where('folder').equals(folder.name).toArray()
     setNotes(folderNotes)
     await refreshPendingCount()
+    await loadTrashCount()
 
     const maxSeq = folderNotes.reduce((m, n) => Math.max(m, n.seq), -1)
     const draft = createDraftNote(folder.name, maxSeq)
     setActiveNote(draft)
     setMobileScreen('editor')
   }
+
 
   useEffect(() => {
     if (!settings) return
@@ -267,6 +276,34 @@ export default function App() {
     resetSearch()
     setMobileScreen('notes')
     await refreshPendingCount()
+    await loadTrashCount()
+  }
+
+  const restoreActiveNote = async () => {
+    if (!activeNote) return
+    const restored = {
+      ...activeNote,
+      deleted: false,
+      dirty: true,
+      updatedAt: new Date().toISOString(),
+    }
+    await db.notes.put(restored)
+    updateSearchIndexForNote(restored)
+    await loadTrashCount()
+
+    // 復元したメモの元のフォルダを表示対象にする (元フォルダが消えていれば既存フォルダにフォールバック)
+    let targetFolder = restored.folder
+    if (!folders.some((f) => f.name === targetFolder) && folders.length > 0) {
+      targetFolder = folders[0].name
+      restored.folder = targetFolder
+      await db.notes.put(restored)
+    }
+    setSelectedFolder(targetFolder)
+    const folderNotes = await db.notes.where('folder').equals(targetFolder).toArray()
+    setNotes(folderNotes)
+    setActiveNote(restored)
+    resetSearch()
+    await refreshPendingCount()
   }
 
   const handleSwipeLeft = () => {
@@ -288,7 +325,7 @@ export default function App() {
   }
 
   const createNewNote = async () => {
-    if (!selectedFolder) return
+    if (!selectedFolder || isTrashFolder(selectedFolder)) return
     await leaveEditor()
     resetSearch()
     const maxSeq = notes.reduce((m, n) => Math.max(m, n.seq), -1)
@@ -296,6 +333,7 @@ export default function App() {
     setActiveNote(draft)
     setMobileScreen('editor')
   }
+
 
   const moveNoteToFolder = async (newFolderName: string) => {
     if (!activeNote || newFolderName === activeNote.folder) return
@@ -401,6 +439,15 @@ export default function App() {
       setGlobalSearchResults(null)
       return
     }
+    if (isTrashFolder(selectedFolder ?? '')) {
+      const q = query.toLowerCase()
+      const matched = notes
+        .filter((n) => n.deleted && (n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q)))
+        .map((n) => n.id)
+      setGlobalSearchResults(null)
+      setSearchResultIds(matched)
+      return
+    }
     if (!searchIndexRef.current) {
       setSearchResultIds([])
       setGlobalSearchResults(null)
@@ -429,13 +476,14 @@ export default function App() {
 
 
   const availableTags = useMemo(() => {
+    const isTrash = isTrashFolder(selectedFolder ?? '')
     const tagSet = new Set<string>()
     for (const n of notes) {
-      if (n.deleted) continue
+      if (isTrash ? !n.deleted : n.deleted) continue
       for (const t of n.tags) tagSet.add(t)
     }
     return Array.from(tagSet).sort()
-  }, [notes])
+  }, [notes, selectedFolder])
 
   const handleSyncNow = async () => {
     if (!settings || syncInFlightRef.current) return
@@ -450,9 +498,11 @@ export default function App() {
       setSyncProgress(null)
       await refreshPendingCount()
       await rebuildSearchIndex()
+      await loadTrashCount()
       syncInFlightRef.current = false
     }
   }
+
 
   const resolveConflict = async (conflict: ConflictItem, choice: 'local' | 'remote') => {
     if (choice === 'local') {
@@ -530,11 +580,16 @@ export default function App() {
             <FolderList
               folders={folders}
               selectedName={selectedFolder}
+              trashCount={trashCount}
               onSelect={async (name) => {
                 await leaveEditor()
                 resetSearch()
                 setSelectedFolder(name)
-                setNotes(await db.notes.where('folder').equals(name).toArray())
+                if (isTrashFolder(name)) {
+                  setNotes(await db.notes.filter((n) => !!n.deleted).toArray())
+                } else {
+                  setNotes(await db.notes.where('folder').equals(name).toArray())
+                }
                 setWordFilter('')
                 setTagFilter(null)
                 setMobileScreen('notes')
@@ -550,13 +605,21 @@ export default function App() {
               <SearchBar
                 key={`notes-${searchResetKey}`}
                 value={searchQuery}
-                placeholder={selectedFolder ? `"${selectedFolder}"内を検索` : 'フォルダ内を検索'}
+                placeholder={
+                  selectedFolder
+                    ? isTrashFolder(selectedFolder)
+                      ? 'ゴミ箱内を検索'
+                      : `"${selectedFolder}"内を検索`
+                    : 'フォルダ内を検索'
+                }
                 onQueryChange={runFolderSearch}
               />
             </div>
-            <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
-              + 新規作成
-            </button>
+            {!isTrashFolder(selectedFolder ?? '') && (
+              <button type="button" className="btn btn-primary new-note-btn" onClick={createNewNote}>
+                + 新規作成
+              </button>
+            )}
             <NoteListControls
               sortBy={sortBy}
               onSortByChange={setSortBy}
@@ -573,11 +636,12 @@ export default function App() {
               wordFilter={wordFilter}
               sortBy={sortBy}
               highlightQuery={searchQuery}
+              isTrash={isTrashFolder(selectedFolder ?? '')}
               onSelect={async (id) => {
                 await leaveEditor()
                 const n = await db.notes.get(id)
                 if (n) {
-                  if (selectedFolder !== n.folder) {
+                  if (!n.deleted && selectedFolder !== n.folder) {
                     setSelectedFolder(n.folder)
                     setNotes(await db.notes.where('folder').equals(n.folder).toArray())
                   }
@@ -603,7 +667,10 @@ export default function App() {
                   isLlmOpen={isLlmOpen}
                   onToggleLlm={() => setIsLlmOpen((o) => !o)}
                   onDelete={deleteActiveNote}
+                  isTrashNote={!!activeNote.deleted}
+                  onRestore={restoreActiveNote}
                 />
+
                 <Editor
                   body={activeNote.body}
                   onChange={updateBody}

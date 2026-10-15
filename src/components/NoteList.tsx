@@ -10,6 +10,7 @@ interface NoteSummary {
   updatedAt: string
   tags: string[]
   deleted: boolean
+  folder?: string
 }
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
   wordFilter: string
   sortBy: SortBy
   highlightQuery?: string
+  isTrash?: boolean
 }
 
 const SORTERS: Record<SortBy, (a: NoteSummary, b: NoteSummary) => number> = {
@@ -38,8 +40,17 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10).replace(/-/g, '/')
 }
 
-export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, sortBy, highlightQuery }: Props) {
-  const visible = notes.filter((n) => !n.deleted)
+export function NoteList({
+  notes,
+  selectedId,
+  onSelect,
+  tagFilter,
+  wordFilter,
+  sortBy,
+  highlightQuery,
+  isTrash = false,
+}: Props) {
+  const visible = isTrash ? notes.filter((n) => n.deleted) : notes.filter((n) => !n.deleted)
   const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
   const word = wordFilter.trim().toLowerCase()
   const wordFiltered = word ? tagFiltered.filter((n) => n.title.toLowerCase().includes(word)) : tagFiltered
@@ -53,7 +64,7 @@ export function NoteList({ notes, selectedId, onSelect, tagFilter, wordFilter, s
               <HighlightText text={n.title} query={highlightQuery ?? ''} />
             </span>
             <span className="note-meta">
-              作成 {formatDate(n.createdAt)} ・ 編集 {formatDate(n.updatedAt)}
+              {isTrash && n.folder ? `[${n.folder}] ` : ''}作成 {formatDate(n.createdAt)} ・ 編集 {formatDate(n.updatedAt)}
             </span>
           </button>
         </li>

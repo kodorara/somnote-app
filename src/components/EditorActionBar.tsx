@@ -9,6 +9,7 @@ import {
   EditIcon,
   TrashIcon,
   CloseIcon,
+  RefreshIcon,
 } from './icons'
 
 export interface EditorActionBarProps {
@@ -24,6 +25,8 @@ export interface EditorActionBarProps {
   isLlmOpen: boolean
   onToggleLlm: () => void
   onDelete: () => void
+  isTrashNote?: boolean
+  onRestore?: () => void
 }
 
 export function EditorActionBar({
@@ -39,6 +42,8 @@ export function EditorActionBar({
   isLlmOpen,
   onToggleLlm,
   onDelete,
+  isTrashNote = false,
+  onRestore,
 }: EditorActionBarProps) {
   const [searchExpanded, setSearchExpanded] = useState(false)
 
@@ -113,17 +118,39 @@ export function EditorActionBar({
           {previewMode === 'edit' ? <PreviewIcon size={18} /> : <EditIcon size={18} />}
         </button>
 
-        {/* 6. ゴミ箱 */}
-        <button
-          type="button"
-          className="action-bar-btn action-bar-btn-delete"
-          aria-label="ゴミ箱に移動"
-          onClick={onDelete}
-          title="ゴミ箱に移動"
-        >
-          <TrashIcon size={18} />
-        </button>
+        {/* 6. ゴミ箱 または 復元 */}
+        {isTrashNote ? (
+          <button
+            type="button"
+            className="action-bar-btn action-bar-btn-restore"
+            aria-label="復元"
+            onClick={onRestore}
+            title="メモを復元"
+          >
+            <RefreshIcon size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="action-bar-btn action-bar-btn-delete"
+            aria-label="ゴミ箱に移動"
+            onClick={onDelete}
+            title="ゴミ箱に移動"
+          >
+            <TrashIcon size={18} />
+          </button>
+        )}
       </div>
+
+      {/* ゴミ箱バナー */}
+      {isTrashNote && (
+        <div className="trash-banner">
+          <span>このメモはゴミ箱に入っています</span>
+          <button type="button" className="btn btn-primary restore-btn" onClick={onRestore}>
+            復元する
+          </button>
+        </div>
+      )}
 
       {/* メモ内検索入力バー (トグル時または検索文字列がある時に展開) */}
       {(searchExpanded || searchQuery) && (

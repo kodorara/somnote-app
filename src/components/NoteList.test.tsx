@@ -80,5 +80,29 @@ describe('NoteList', () => {
     expect(marks).toHaveLength(2)
     expect(marks[0].textContent).toBe('メモ')
   })
+
+  it('renders deleted notes when isTrash is true, including original folder name', () => {
+    const mixedNotes = [
+      ...notes,
+      {
+        id: 'deleted-1',
+        title: '削除済みメモ',
+        seq: 3,
+        createdAt: '2026-10-12T10:00:00+09:00',
+        updatedAt: '2026-10-12T10:00:00+09:00',
+        tags: [],
+        deleted: true,
+        folder: '仕事',
+      },
+    ]
+
+    const { rerender } = render(<NoteList {...defaultProps} notes={mixedNotes} isTrash={false} />)
+    expect(screen.queryByText('削除済みメモ')).not.toBeInTheDocument()
+
+    rerender(<NoteList {...defaultProps} notes={mixedNotes} isTrash={true} />)
+    expect(screen.getByText('削除済みメモ')).toBeInTheDocument()
+    expect(screen.getByText(/\[仕事\]/)).toBeInTheDocument()
+    expect(screen.queryByText('先に書いたメモ')).not.toBeInTheDocument()
+  })
 })
 

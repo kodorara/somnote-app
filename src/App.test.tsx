@@ -624,4 +624,90 @@ describe('pull to refresh and editor action bar', () => {
   })
 })
 
+describe('trash virtual folder and restore', () => {
+  it('displays trash folder with count badge, lists deleted notes, and restores note', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    // 削除済みメモを1件登録
+    await db.notes.put({
+      id: 'trash-note-1',
+      title: '削除されたメモ',
+      folder: '前ノート',
+      seq: 0,
+      tags: ['テスト'],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-10-12T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: '削除されたメモの本文',
+      baseSha: null,
+      dirty: false,
+    })
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    // スワイプでフォルダ一覧へ
+    const swipeContainer = container.querySelector('.columns')!
+    // editor -> notes
+    fireEvent.pointerDown(swipeContainer, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(swipeContainer, { clientX: 200, clientY: 100 })
+    await waitFor(() => {
+      expect(swipeContainer).toHaveClass('mobile-notes')
+    })
+
+    // notes -> folders
+    fireEvent.pointerDown(swipeContainer, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(swipeContainer, { clientX: 200, clientY: 100 })
+    await waitFor(() => {
+      expect(swipeContainer).toHaveClass('mobile-folders')
+    })
+
+    // フォルダ一覧最下部に「ゴミ箱」行とバッジ「1」があること
+    const trashBtn = await screen.findByRole('button', { name: 'ゴミ箱 (1)' })
+    expect(trashBtn).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+
+    // ゴミ箱をクリックしてメモ一覧へ遷移
+    fireEvent.click(trashBtn)
+    await waitFor(() => {
+      expect(swipeContainer).toHaveClass('mobile-notes')
+    })
+
+
+    // ゴミ箱選択中は「+ 新規作成」ボタンが存在しないこと
+    expect(screen.queryByRole('button', { name: '+ 新規作成' })).not.toBeInTheDocument()
+
+    // 削除されたメモが一覧に表示されていること
+    expect(screen.getByText('削除されたメモ')).toBeInTheDocument()
+    expect(screen.getByText(/\[前ノート\]/)).toBeInTheDocument()
+
+    // 削除されたメモをクリックしてエディタを開く
+    fireEvent.click(screen.getByText('削除されたメモ'))
+    await waitFor(() => {
+      expect(swipeContainer).toHaveClass('mobile-editor')
+    })
+
+    // ゴミ箱バナーが表示されていること
+    expect(screen.getByText('このメモはゴミ箱に入っています')).toBeInTheDocument()
+
+    // バナーの「復元する」ボタンをクリック
+    const restoreBtn = screen.getByRole('button', { name: '復元する' })
+    fireEvent.click(restoreBtn)
+
+    // DB上で deleted: false に戻っていること
+    await waitFor(async () => {
+      const restored = await db.notes.get('trash-note-1')
+      expect(restored?.deleted).toBe(false)
+      expect(restored?.dirty).toBe(true)
+    })
+
+    // バナーが消え、通常のゴミ箱アイコン（「ゴミ箱に移動」）に戻っていること
+    expect(screen.queryByText('このメモはゴミ箱に入っています')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ゴミ箱に移動' })).toBeInTheDocument()
+  })
+})
+
+
 

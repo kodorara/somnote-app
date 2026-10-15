@@ -164,6 +164,57 @@
   border-top: 1px solid var(--color-divider);
 }
 
+.folder-trash-wrap {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-divider);
+  background: color-mix(in srgb, var(--color-bg) 95%, var(--color-text) 5%);
+}
+.folder-trash-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.folder-trash-btn:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+}
+.folder-trash-btn[aria-current='true'] {
+  background: color-mix(in srgb, var(--color-accent-400) 15%, transparent);
+  color: var(--color-accent-400);
+  font-weight: 600;
+}
+.folder-trash-btn .folder-trash-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.folder-trash-btn .folder-trash-name {
+  flex: 1;
+  text-align: left;
+}
+.trash-count-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+  color: var(--color-text-muted);
+}
+.folder-trash-btn[aria-current='true'] .trash-count-badge {
+  background: var(--color-accent-400);
+  color: #fff;
+}
+
+
 .new-note-btn {
   display: block;
   width: calc(100% - 2 * var(--space-4));
@@ -360,6 +411,52 @@
   cursor: pointer;
   padding: 4px;
 }
+.action-bar-btn-restore {
+  color: var(--color-accent-200);
+}
+.action-bar-btn-restore:hover {
+  color: var(--color-accent-100);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+/* — trash banner — */
+.trash-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--color-accent-400) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-400) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-text);
+}
+.trash-banner-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: var(--color-accent-400);
+}
+.trash-banner-text {
+  flex: 1;
+}
+.trash-banner-restore-btn {
+  flex: none;
+  background: var(--color-accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.trash-banner-restore-btn:hover {
+  opacity: 0.9;
+}
+
 
 /* — pull to refresh — */
 .pull-to-refresh-container {

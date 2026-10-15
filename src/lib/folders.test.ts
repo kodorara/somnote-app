@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './db'
-import { createFolder, deleteFolder, reorderFolders, topFolder } from './folders'
+import { createFolder, deleteFolder, reorderFolders, topFolder, isTrashFolder } from './folders'
 
 beforeEach(async () => {
   await db.folders.clear()
@@ -84,5 +84,15 @@ describe('topFolder', () => {
 
   it('returns undefined for an empty list', () => {
     expect(topFolder([])).toBeUndefined()
+  })
+})
+
+describe('isTrashFolder', () => {
+  it('returns true only for the trash folder name', () => {
+    expect(isTrashFolder('ゴミ箱')).toBe(true)
+    expect(isTrashFolder('前ノート')).toBe(false)
+    expect(isTrashFolder('')).toBe(false)
+    expect(isTrashFolder(null)).toBe(false)
+    expect(isTrashFolder(undefined)).toBe(false)
   })
 })

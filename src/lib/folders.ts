@@ -1,5 +1,11 @@
 import { db, type StoredFolder } from './db'
 
+export const TRASH_FOLDER_NAME = 'ゴミ箱'
+
+export function isTrashFolder(folderName: string | null | undefined): boolean {
+  return folderName === TRASH_FOLDER_NAME
+}
+
 export async function createFolder(name: string, existingFolders: StoredFolder[]): Promise<StoredFolder> {
   const maxSeq = existingFolders.reduce((m, f) => Math.max(m, f.seq), -1)
   const folder: StoredFolder = {

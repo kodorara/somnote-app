@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
+import { TrashIcon } from './icons'
 
 interface Props {
   folders: StoredFolder[]
@@ -8,6 +9,7 @@ interface Props {
   onCreate: (name: string) => void
   onDelete: (folder: StoredFolder) => void
   onReorder: (orderedFolderIds: string[]) => void
+  trashCount?: number
 }
 
 function GripIcon() {
@@ -23,7 +25,15 @@ function GripIcon() {
   )
 }
 
-export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete, onReorder }: Props) {
+export function FolderList({
+  folders,
+  selectedName,
+  onSelect,
+  onCreate,
+  onDelete,
+  onReorder,
+  trashCount,
+}: Props) {
   const [newName, setNewName] = useState('')
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const draggingId = useRef<string | null>(null)
@@ -132,6 +142,22 @@ export function FolderList({ folders, selectedName, onSelect, onCreate, onDelete
           )
         })}
       </ul>
+      <div className="folder-trash-wrap">
+        <button
+          type="button"
+          className="folder-select-btn folder-trash-btn"
+          aria-label={trashCount !== undefined && trashCount > 0 ? `ゴミ箱 (${trashCount})` : 'ゴミ箱'}
+          aria-current={selectedName === 'ゴミ箱'}
+          onClick={() => onSelect('ゴミ箱')}
+        >
+          <TrashIcon size={16} className="trash-folder-icon" />
+          <span className="folder-trash-label">ゴミ箱</span>
+          {trashCount !== undefined && trashCount > 0 && (
+            <span className="trash-count-badge">{trashCount}</span>
+          )}
+        </button>
+      </div>
+
       <div className="folder-create-form">
         <input
           className="input"

@@ -87,4 +87,15 @@ describe('FolderList', () => {
 
     expect(onReorder).not.toHaveBeenCalled()
   })
+
+  it('renders the trash virtual folder and calls onSelect with "ゴミ箱" when clicked', () => {
+    const onSelect = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onSelect={onSelect} trashCount={5} />)
+    const trashBtn = screen.getByRole('button', { name: /ゴミ箱/ })
+    expect(trashBtn).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
+
+    fireEvent.click(trashBtn)
+    expect(onSelect).toHaveBeenCalledWith('ゴミ箱')
+  })
 })
