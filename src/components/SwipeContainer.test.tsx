@@ -111,6 +111,45 @@ describe('SwipeContainer', () => {
     expect(onSwipeRight).not.toHaveBeenCalled()
   })
 
+  it('allows a swipe starting on a textarea when the gesture begins near the screen edge (edge-swipe)', () => {
+    // メモ編集画面ではtextareaがほぼ全面を占めるため、画面端からのジェスチャーだけは
+    // textarea上であってもスワイプとして扱う(通常のテキスト選択と衝突しないよう、
+    // 画面端ちょうどから始まる操作に限定している)
+    const onSwipeLeft = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={onSwipeLeft}>
+        <textarea aria-label="メモ本文" defaultValue="入力テキスト" />
+      </SwipeContainer>,
+    )
+
+    const container = screen.getByTestId('swipe-container')
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 400, width: 400 } as DOMRect)
+    const textarea = screen.getByRole('textbox')
+
+    fireEvent.pointerDown(textarea, { clientX: 390, clientY: 100 }) // 右端から10px
+    fireEvent.pointerUp(textarea, { clientX: 300, clientY: 100 }) // deltaX = -90
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1)
+  })
+
+  it('still ignores a textarea gesture that does not start near the screen edge', () => {
+    const onSwipeLeft = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={onSwipeLeft}>
+        <textarea aria-label="メモ本文" defaultValue="入力テキスト" />
+      </SwipeContainer>,
+    )
+
+    const container = screen.getByTestId('swipe-container')
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 400, width: 400 } as DOMRect)
+    const textarea = screen.getByRole('textbox')
+
+    fireEvent.pointerDown(textarea, { clientX: 200, clientY: 100 }) // 画面中央
+    fireEvent.pointerUp(textarea, { clientX: 100, clientY: 100 })
+
+    expect(onSwipeLeft).not.toHaveBeenCalled()
+  })
+
   it('still swipes when starting on an element whose scrollWidth exceeds clientWidth but overflow-x is not scrollable', () => {
     // overflow-xがvisible(既定)のままだと、要素自体は横スクロール領域として機能しない
     // ため、スワイプを妨げてはならない

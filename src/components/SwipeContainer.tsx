@@ -8,6 +8,13 @@ interface Props {
   threshold?: number
 }
 
+// メモ編集画面では本文欄(textarea)がほぼ画面全体を占め、スワイプを始める「掴める場所」が
+// どこにも残らない。textarea自体はテキスト選択との衝突を避けるため除外対象のままにしつつ、
+// 画面の端(この幅の範囲)から始まるジェスチャーだけは、textarea上であってもスワイプとして
+// 扱う(iOS等の「エッジスワイプで戻る」と同じ考え方。通常のテキスト選択はここまで厳密に
+// 画面端から始まることはまず無いため衝突しない)。
+const EDGE_ZONE_PX = 24
+
 // targetからroot(SwipeContainer自身)までの祖先を辿り、横方向にスクロール可能な
 // 要素(コードブロックや幅の広い表など)があるかを調べる。固定クラス名のホワイト
 // リストと違い、将来追加されるどんな横スクロール要素にも後付け対応不要で効く。
@@ -35,10 +42,18 @@ export function SwipeContainer({
   const rootRef = useRef<HTMLDivElement | null>(null)
 
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = rootRef.current?.getBoundingClientRect()
+    // rect.width === 0(レイアウト未計算。テスト環境のjsdom等)の場合は、端からの
+    // 距離を正しく判定できないため、安全側に倒してエッジスワイプ扱いしない
+    const nearEdge =
+      !!rect && rect.width > 0 && (e.clientX - rect.left <= EDGE_ZONE_PX || rect.right - e.clientX <= EDGE_ZONE_PX)
+
     // フォーム入力要素やドラッグハンドル、横スクロール可能な要素上での操作は
-    // スワイプから除外する
+    // スワイプから除外する。ただし画面端からのジェスチャーはエッジスワイプとして
+    // 常に許可する(上のEDGE_ZONE_PXの説明を参照)。
     const target = e.target as HTMLElement | null
     if (
+      !nearEdge &&
       target &&
       (target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
