@@ -119,6 +119,23 @@ describe('mobile swipe navigation', () => {
     swipeLeft(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
   })
+
+  it('swipes away from the editor screen via the dedicated edge-swipe handle (not the textarea itself)', async () => {
+    // 本文欄(textarea)はテキスト選択との衝突を避けるためスワイプ対象外になっている。
+    // メモ編集画面では本文欄がほぼ画面全体を占めるため、代わりに画面端専用のエッジ
+    // スワイプ帯からの操作で遷移できることを確認する(実機で踏んだ不具合の再現テスト)。
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(container.querySelector('.columns')).toHaveClass('mobile-editor')
+
+    const edgeHandle = container.querySelector('.editor-edge-swipe-handle--left') as HTMLElement
+    expect(edgeHandle).toBeTruthy()
+    swipeRight(edgeHandle)
+
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+  })
 })
 
 describe('creating a new note after navigating back via swipe', () => {

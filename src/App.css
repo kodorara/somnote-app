@@ -584,8 +584,27 @@
 .app-lock label { font-size: 12px; color: var(--color-text-muted); }
 .app-lock-error { margin: 0; font-size: 12px; color: var(--color-accent-400); }
 
+/* メモ編集画面専用のエッジスワイプ帯。画面の真の端に固定し、アクションバーより
+   手前(低いz-index)、textareaより奥(高いz-index)に配置する。デスクトップでは
+   スワイプナビゲーション自体を使わないため非表示にする。 */
+.editor-edge-swipe-handle {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .mobile-only { display: inline-flex; }
+
+  .editor-edge-swipe-handle {
+    display: block;
+    position: fixed;
+    top: 0;
+    bottom: env(safe-area-inset-bottom, 0px);
+    width: 24px;
+    z-index: 5;
+    touch-action: none;
+  }
+  .editor-edge-swipe-handle--left { left: 0; }
+  .editor-edge-swipe-handle--right { right: 0; }
 
   .search-bar-wrap {
     width: 110px;
