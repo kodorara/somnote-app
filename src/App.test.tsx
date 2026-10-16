@@ -737,9 +737,11 @@ describe('search integration', () => {
     // 読書メモを開いてプレビューに切り替えると、本文中の「哲学」もハイライトされること
     fireEvent.click(screen.getByRole('button', { name: /哲学の読書メモ/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'プレビュー' }))
-    const previewMark = document.querySelector('.preview mark.search-highlight')
-    expect(previewMark).toBeInTheDocument()
-    expect(previewMark?.textContent).toBe('哲学')
+    await waitFor(() => {
+      const previewMark = document.querySelector('.preview mark.search-highlight')
+      expect(previewMark).toBeInTheDocument()
+      expect(previewMark?.textContent).toBe('哲学')
+    })
 
     // 検索窓をクリアすると両方表示されること
     fireEvent.change(notesSearchInput, { target: { value: '' } })
@@ -856,9 +858,11 @@ describe('pull to refresh and editor action bar', () => {
 
     // 3. プレビュー切替 & ハイライト確認
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー' }))
-    const mark = document.querySelector('.preview mark.search-highlight')
-    expect(mark).toBeInTheDocument()
-    expect(mark?.textContent).toBe('アクション')
+    await waitFor(() => {
+      const mark = document.querySelector('.preview mark.search-highlight')
+      expect(mark).toBeInTheDocument()
+      expect(mark?.textContent).toBe('アクション')
+    })
 
     // 再度プレビューボタン（編集アイコン）を押して編集モードに戻る
     fireEvent.click(screen.getByRole('button', { name: '編集' }))

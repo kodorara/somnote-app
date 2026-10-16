@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { HighlightText } from './HighlightText'
+
+const ReactMarkdown = lazy(() => import('react-markdown'))
 
 interface Props {
   body: string
@@ -68,7 +69,9 @@ export function Editor({ body, onChange, highlightQuery, mode: externalMode, onM
         <textarea aria-label="本文" value={body} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <div className="preview">
-          <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
+          <Suspense fallback={null}>
+            <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
+          </Suspense>
         </div>
       )}
     </div>
