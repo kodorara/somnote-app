@@ -11,6 +11,7 @@ interface Props {
   onDelete: (folder: StoredFolder) => void
   onReorder: (orderedFolderIds: string[]) => void
   trashCount?: number
+  noteCounts?: Record<string, number>
   onOpenSettings?: () => void
 }
 
@@ -36,6 +37,7 @@ export function FolderList({
   onDelete,
   onReorder,
   trashCount,
+  noteCounts,
   onOpenSettings,
 }: Props) {
   const [newName, setNewName] = useState('')
@@ -133,7 +135,12 @@ export function FolderList({
                 onClick={() => onSelect(f.name)}
               >
                 <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
-                {f.name}
+                <span className="folder-name">{f.name}</span>
+                {!!noteCounts?.[f.name] && (
+                  <span className="folder-count-badge" aria-hidden="true">
+                    {noteCounts[f.name]}
+                  </span>
+                )}
               </button>
               <button
                 type="button"

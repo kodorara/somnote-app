@@ -36,6 +36,7 @@ export default function App() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [notes, setNotes] = useState<StoredNote[]>([])
   const [trashCount, setTrashCount] = useState(0)
+  const [folderCounts, setFolderCounts] = useState<Record<string, number>>({})
   const [activeNote, setActiveNote] = useState<StoredNote | null>(null)
   const [mobileScreen, setMobileScreen] = useState<MobileScreen>('editor')
   const [online, setOnline] = useState(navigator.onLine)
@@ -58,9 +59,21 @@ export default function App() {
   const syncInFlightRef = useRef(false)
   const searchIndexRef = useRef<SearchIndex | null>(null)
 
-  const loadTrashCount = async () => {
-    const count = await db.notes.filter((n) => !!n.deleted).count()
-    setTrashCount(count)
+  // ゴミ箱件数とフォルダごとの件数を1回のtoArray()スキャンでまとめて計算する
+  // (trashCount/folderCountsを別々にスキャンして往復を倍にしない)
+  const loadCounts = async () => {
+    const all = await db.notes.toArray()
+    let trash = 0
+    const counts: Record<string, number> = {}
+    for (const n of all) {
+      if (n.deleted) {
+        trash++
+        continue
+      }
+      counts[n.folder] = (counts[n.folder] ?? 0) + 1
+    }
+    setTrashCount(trash)
+    setFolderCounts(counts)
   }
 
   const handleBackupRestored = async () => {
@@ -68,9 +81,10 @@ export default function App() {
     setFolders(allFolders)
     await loadFolderAndDraft(allFolders)
     await rebuildSearchIndex()
-    await loadTrashCount()
+    void loadCounts()
     resetSearch()
-    setIsSettingsOpen(false)
+    // 設定モーダルはここでは閉じない。復元完了メッセージをユーザーが読めるよう、
+    // 「設定を閉じる」で手動で閉じてもらう(自動で閉じると読む間もなく消えてしまう)。
   }
 
 
@@ -100,11 +114,18 @@ export default function App() {
   // (索引がまだ無い＝初回起動、またはバックアップ復元で全データが丸ごと
   // 置き換わった場合)だけ呼ぶ。チャンク分割版(buildIndexAsync)を使い、
   // メインスレッドを長時間ブロックしないようにする。
+  const searchIndexBuildingRef = useRef(false)
   const rebuildSearchIndex = async () => {
-    const all = await db.notes.toArray()
-    searchIndexRef.current = await buildIndexAsync(
-      all.filter((n) => !n.deleted).map((n) => ({ id: n.id, title: n.title, body: n.body })),
-    )
+    if (searchIndexBuildingRef.current) return
+    searchIndexBuildingRef.current = true
+    try {
+      const all = await db.notes.toArray()
+      searchIndexRef.current = await buildIndexAsync(
+        all.filter((n) => !n.deleted).map((n) => ({ id: n.id, title: n.title, body: n.body })),
+      )
+    } finally {
+      searchIndexBuildingRef.current = false
+    }
   }
 
   const updateSearchIndexForNote = (note: StoredNote) => {
@@ -117,12 +138,12 @@ export default function App() {
   }
 
   // 同期で実際に変化したノートだけを索引に反映する。索引がまだ無い場合
-  // (初回起動)は全件構築にフォールバックする。「同期のたびに全件再構築」を
-  // やめることで、通常利用時の同期(差分がごく少数)でのメインスレッドブロックを
-  // ほぼ無くす。
+  // (初回起動)は全件構築が必要だが、これをawaitで待つと編集画面が表示される
+  // タイミングまで毎回ブロックしてしまう(起動直後のスワイプ等の操作感が重くなる
+  // 主因だった)。バックグラウンドで実行させ、起動そのものはブロックしない。
   const applySearchIndexUpdate = async (updatedNotes: StoredNote[] | null) => {
     if (!searchIndexRef.current) {
-      await rebuildSearchIndex()
+      void rebuildSearchIndex()
       return
     }
     if (updatedNotes) {
@@ -152,7 +173,7 @@ export default function App() {
     const folderNotes = await db.notes.where('folder').equals(folder.name).toArray()
     setNotes(folderNotes)
     await refreshPendingCount()
-    await loadTrashCount()
+    void loadCounts()
 
     const maxSeq = folderNotes.reduce((m, n) => Math.max(m, n.seq), -1)
     const draft = createDraftNote(folder.name, maxSeq)
@@ -349,7 +370,7 @@ export default function App() {
     resetSearch()
     setMobileScreen('notes')
     await refreshPendingCount()
-    await loadTrashCount()
+    void loadCounts()
   }
 
   const restoreActiveNote = async () => {
@@ -362,7 +383,7 @@ export default function App() {
     }
     await db.notes.put(restored)
     updateSearchIndexForNote(restored)
-    await loadTrashCount()
+    void loadCounts()
 
     // 復元したメモの元のフォルダを表示対象にする (元フォルダが消えていれば既存フォルダにフォールバック)
     let targetFolder = restored.folder
@@ -471,7 +492,7 @@ export default function App() {
     setNotes((prev) => prev.filter((n) => !deletedIds.has(n.id)))
     if (activeNote && deletedIds.has(activeNote.id)) setActiveNote(null)
     await refreshPendingCount()
-    await loadTrashCount()
+    void loadCounts()
   }
 
 
@@ -619,7 +640,7 @@ export default function App() {
       setSyncProgress(null)
       await refreshPendingCount()
       await applySearchIndexUpdate(result?.updatedNotes ?? null)
-      await loadTrashCount()
+      void loadCounts()
       syncInFlightRef.current = false
     }
   }
@@ -705,6 +726,7 @@ export default function App() {
               folders={folders}
               selectedName={selectedFolder}
               trashCount={trashCount}
+              noteCounts={folderCounts}
               onSelect={async (name) => {
                 await leaveEditor()
                 resetSearch()

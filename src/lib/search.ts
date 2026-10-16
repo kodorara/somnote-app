@@ -29,7 +29,7 @@ export function buildIndex(notes: SearchableNote[]): SearchIndex {
 // 入力やレンダリングを処理できる隙間を作る。
 export async function buildIndexAsync(
   notes: SearchableNote[],
-  chunkSize = 300,
+  chunkSize = 80,
 ): Promise<SearchIndex> {
   const index = createIndex()
   for (let i = 0; i < notes.length; i += chunkSize) {

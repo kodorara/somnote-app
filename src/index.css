@@ -47,18 +47,21 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 /* Android Chrome等は画面端からの横スワイプを「ブラウザの戻る/進む」ジェスチャーと
-   みなし、ページ遷移プレビューを表示することがある。アプリ自身のスワイプナビゲー
-   ション(SwipeContainer)と同じ操作を奪い合い、画面が中途半端に遷移しかけた状態の
-   まま固まって見える不具合の原因になるため、横方向のネイティブなオーバースクロール
-   ジェスチャーだけを無効化する(縦方向は独自のプルで同期機能が使うため残す)。 */
+   みなしてページ遷移プレビューを表示したり、画面上端からの下方向ドラッグを
+   ブラウザ自身の「引っ張って更新」とみなして独自のインジケーターを表示したり
+   することがある。アプリ自身のジェスチャー(SwipeContainer・PullToRefresh)は
+   どちらも実測したpointer座標だけで動く自前実装でネイティブなオーバースクロール
+   には依存していないため、両方向とも無効化してブラウザ側の表示が競合しないように
+   する。 */
 html {
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
 }
 
 body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
+  overscroll-behavior: none;
   overscroll-behavior-x: none;
 }
 

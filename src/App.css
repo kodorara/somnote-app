@@ -60,7 +60,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
 }
 
 .col-folders {
@@ -147,6 +147,19 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
+}
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-count-badge {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  margin-left: var(--space-2);
 }
 .folder-delete-btn {
   flex: none;
@@ -521,6 +534,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overscroll-behavior: none;
 }
 .pull-to-refresh-indicator {
   overflow: hidden;

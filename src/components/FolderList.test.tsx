@@ -99,6 +99,20 @@ describe('FolderList', () => {
     expect(onSelect).toHaveBeenCalledWith('ゴミ箱')
   })
 
+  it('shows a small note count badge next to the folder name when noteCounts has a positive count', () => {
+    render(<FolderList {...baseProps} folders={folders} noteCounts={{ '前ノート': 12, '仕事': 0 }} />)
+    const items = screen.getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('前ノート')
+    expect(items[0].querySelector('.folder-count-badge')).toHaveTextContent('12')
+    // 0件のフォルダにはバッジを表示しない(ゴミ箱バッジと同じ挙動)
+    expect(items[1].querySelector('.folder-count-badge')).toBeNull()
+  })
+
+  it('does not render a count badge when noteCounts is not provided', () => {
+    render(<FolderList {...baseProps} folders={folders} />)
+    expect(document.querySelector('.folder-count-badge')).toBeNull()
+  })
+
   it('renders settings button and calls onOpenSettings when clicked', () => {
     const onOpenSettings = vi.fn()
     render(<FolderList {...baseProps} folders={folders} onOpenSettings={onOpenSettings} />)
