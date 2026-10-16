@@ -60,6 +60,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  overscroll-behavior-x: none;
 }
 
 .col-folders {
