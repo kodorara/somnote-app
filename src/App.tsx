@@ -794,13 +794,15 @@ export default function App() {
 
             )}
           </div>
-          {mobileScreen === 'editor' && activeNote && (
-            // メモ編集画面は本文欄(textarea)がほぼ画面全体を占め、textarea自体は
-            // テキスト選択との衝突を避けるためスワイプ対象外にしている。そのため
-            // 画面の真の端(screen edge)に、textareaより手前(上)に重なる専用の
-            // 透明な帯を置き、ここから始まるタッチだけはtextareaに吸収されず
-            // 必ずスワイプとして認識されるようにする(z-indexはアクションバーより
-            // 低いため、アクションバーのボタン操作は従来通り優先される)。
+          {(mobileScreen === 'editor' || mobileScreen === 'notes') && (
+            // 本文欄(textarea)やスクロール可能なメモ一覧(overflow-y:auto)は、
+            // ブラウザがテキスト選択/縦スクロールのネイティブなジェスチャーだと
+            // 先に判定してpointercancelになり、JS側のスワイプ判定が完了しない
+            // ことがある。そこで画面の真の端(screen edge)に、それらのコンテンツ
+            // より手前(上)に重なる専用の透明な帯を置き、ここから始まるタッチ
+            // だけは必ずスワイプとして認識されるようにする(z-indexはアクション
+            // バーより低いため、アクションバーのボタン操作は従来通り優先される。
+            // フォルダ一覧画面はドラッグハンドル/削除ボタンが画面端にあるため対象外)。
             <>
               <div className="editor-edge-swipe-handle editor-edge-swipe-handle--left" aria-hidden="true" />
               <div className="editor-edge-swipe-handle editor-edge-swipe-handle--right" aria-hidden="true" />

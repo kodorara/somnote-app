@@ -136,6 +136,26 @@ describe('mobile swipe navigation', () => {
 
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
   })
+
+  it('swipes from the notes screen to the folders screen via the dedicated edge-swipe handle (note list is scrollable and can swallow the gesture natively)', async () => {
+    // メモ一覧(.col-notes)はoverflow-y:autoのスクロール領域であり、本文欄の時と同じ
+    // 理由(ネイティブなジェスチャー判定が先に割り込む)でスワイプが実機で効かない
+    // ことがあった。メモ一覧画面でもエッジスワイプ帯から遷移できることを確認する。
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer) // エディタ -> メモ一覧
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    const edgeHandle = container.querySelector('.editor-edge-swipe-handle--left') as HTMLElement
+    expect(edgeHandle).toBeTruthy()
+    swipeRight(edgeHandle)
+
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
+  })
 })
 
 describe('creating a new note after navigating back via swipe', () => {
