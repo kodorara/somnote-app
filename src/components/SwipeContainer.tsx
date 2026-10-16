@@ -3,6 +3,8 @@ import { useRef, type PointerEvent, type ReactNode } from 'react'
 interface Props {
   onSwipeLeft?: () => void
   onSwipeRight?: () => void
+  canSwipeLeft?: boolean
+  canSwipeRight?: boolean
   children: ReactNode
   className?: string
   threshold?: number
@@ -33,12 +35,16 @@ function hasHorizontallyScrollableAncestor(target: HTMLElement | null, root: HTM
 export function SwipeContainer({
   onSwipeLeft,
   onSwipeRight,
+  canSwipeLeft,
+  canSwipeRight,
   children,
   className,
   threshold = 50,
 }: Props) {
   const startPos = useRef<{ x: number; y: number } | null>(null)
   const isExcluded = useRef<boolean>(false)
+  const isDragging = useRef<boolean>(false)
+  const isVerticalScroll = useRef<boolean>(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -70,35 +76,113 @@ export function SwipeContainer({
 
     isExcluded.current = false
     startPos.current = { x: e.clientX, y: e.clientY }
+    isDragging.current = false
+    isVerticalScroll.current = false
+
+    if (typeof e.currentTarget.setPointerCapture === 'function') {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        // jsdom等の未実装環境対策
+      }
+    }
+  }
+
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (isExcluded.current || !startPos.current || isVerticalScroll.current) return
+
+    const rawDeltaX = e.clientX - startPos.current.x
+    const deltaY = e.clientY - startPos.current.y
+
+    // 縦スクロールと判定される場合はスワイプをキャンセルし、オフセットをリセット
+    if (Math.abs(deltaY) > Math.abs(rawDeltaX)) {
+      isVerticalScroll.current = true
+      if (isDragging.current) {
+        rootRef.current?.style.setProperty('--drag-offset', '0px')
+        rootRef.current?.classList.remove('is-dragging')
+        isDragging.current = false
+      }
+      return
+    }
+
+    if (!isDragging.current) {
+      isDragging.current = true
+      rootRef.current?.classList.add('is-dragging')
+    }
+
+    const canLeft = canSwipeLeft ?? !!onSwipeLeft
+    const canRight = canSwipeRight ?? !!onSwipeRight
+    let deltaX = rawDeltaX
+
+    // 境界外へのスワイプ(左画面がないのに右ドラッグ、または右画面がないのに左ドラッグ)はゴム状に減衰
+    if (deltaX < 0 && !canLeft) {
+      deltaX = deltaX * 0.2
+    } else if (deltaX > 0 && !canRight) {
+      deltaX = deltaX * 0.2
+    }
+
+    rootRef.current?.style.setProperty('--drag-offset', `${deltaX}px`)
   }
 
   const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (typeof e.currentTarget.releasePointerCapture === 'function') {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // jsdom等の未実装環境対策
+      }
+    }
+
     if (isExcluded.current || !startPos.current) {
       startPos.current = null
+      isDragging.current = false
+      isVerticalScroll.current = false
+      rootRef.current?.style.setProperty('--drag-offset', '0px')
+      rootRef.current?.classList.remove('is-dragging')
       return
     }
 
     const deltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
+    const wasVertical = isVerticalScroll.current
     startPos.current = null
+    isDragging.current = false
+    isVerticalScroll.current = false
 
-    // 縦スクロールと判定される場合はスワイプをキャンセル
-    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+    // 指を離した瞬間にオフセットを0に戻し、transitionによるスナップまたはスナップバックを発動させる
+    rootRef.current?.style.setProperty('--drag-offset', '0px')
+    rootRef.current?.classList.remove('is-dragging')
+
+    if (wasVertical || Math.abs(deltaY) > Math.abs(deltaX)) {
       return
     }
 
-    if (deltaX < -threshold) {
+    const canLeft = canSwipeLeft ?? !!onSwipeLeft
+    const canRight = canSwipeRight ?? !!onSwipeRight
+
+    if (deltaX < -threshold && canLeft) {
       // 左スワイプ（画面を右から左へ払う）
       onSwipeLeft?.()
-    } else if (deltaX > threshold) {
+    } else if (deltaX > threshold && canRight) {
       // 右スワイプ（画面を左から右へ払う）
       onSwipeRight?.()
     }
   }
 
-  const handlePointerCancel = () => {
+  const handlePointerCancel = (e: PointerEvent<HTMLDivElement>) => {
+    if (typeof e.currentTarget.releasePointerCapture === 'function') {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // jsdom等の未実装環境対策
+      }
+    }
     startPos.current = null
     isExcluded.current = false
+    isDragging.current = false
+    isVerticalScroll.current = false
+    rootRef.current?.style.setProperty('--drag-offset', '0px')
+    rootRef.current?.classList.remove('is-dragging')
   }
 
   return (
@@ -106,6 +190,7 @@ export function SwipeContainer({
       ref={rootRef}
       className={className}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       data-testid="swipe-container"

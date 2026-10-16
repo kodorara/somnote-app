@@ -742,6 +742,8 @@ export default function App() {
           className={`columns mobile-${mobileScreen}`}
           onSwipeLeft={handleSwipeLeft}
           onSwipeRight={handleSwipeRight}
+          canSwipeLeft={mobileScreen === 'folders' || (mobileScreen === 'notes' && !!activeNote)}
+          canSwipeRight={mobileScreen === 'editor' || mobileScreen === 'notes'}
         >
           <div className="col-folders">
             <div className="column-search-wrap">

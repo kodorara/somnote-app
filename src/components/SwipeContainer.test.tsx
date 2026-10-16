@@ -169,4 +169,88 @@ describe('SwipeContainer', () => {
 
     expect(onSwipeRight).toHaveBeenCalledTimes(1)
   })
+
+  it('updates --drag-offset CSS variable and adds .is-dragging class during pointermove', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 150, clientY: 100 })
+
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('50px')
+    expect(container).toHaveClass('is-dragging')
+
+    fireEvent.pointerUp(container, { clientX: 150, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+  })
+
+  it('stops tracking and resets --drag-offset if vertical scroll becomes dominant during pointermove', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    // まず横に少し動かす
+    fireEvent.pointerMove(container, { clientX: 120, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('20px')
+    expect(container).toHaveClass('is-dragging')
+
+    // 縦スクロール優勢に動かす (deltaX=20, deltaY=60)
+    fireEvent.pointerMove(container, { clientX: 120, clientY: 160 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+
+    // 以降の横移動でも追従しない
+    fireEvent.pointerMove(container, { clientX: 200, clientY: 160 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+  })
+
+  it('resets --drag-offset and removes .is-dragging on pointercancel', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('60px')
+
+    fireEvent.pointerCancel(container)
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+  })
+
+  it('dampens offset when dragging beyond boundaries (canSwipeLeft/Right is false)', () => {
+    // 右方向(戻る画面がない: canSwipeRight=false)へのドラッグ
+    const { rerender } = render(
+      <SwipeContainer onSwipeLeft={vi.fn()} canSwipeRight={false}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 200, clientY: 100 }) // rawDeltaX = +100
+    // 0.2倍に減衰される (100 * 0.2 = 20px)
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('20px')
+
+    fireEvent.pointerUp(container, { clientX: 200, clientY: 100 })
+
+    // 左方向(進む画面がない: canSwipeLeft=false)へのドラッグ
+    rerender(
+      <SwipeContainer onSwipeRight={vi.fn()} canSwipeLeft={false}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    fireEvent.pointerDown(container, { clientX: 200, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 100, clientY: 100 }) // rawDeltaX = -100
+    // 0.2倍に減衰される (-100 * 0.2 = -20px)
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('-20px')
+  })
 })

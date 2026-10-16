@@ -701,19 +701,34 @@
     transition: transform 0.2s;
     background: var(--color-bg);
   }
+  /* ドラッグ中は指の動きに即座に追従させるためアニメーションを無効化 */
+  .columns.is-dragging .col-folders,
+  .columns.is-dragging .col-notes,
+  .columns.is-dragging .col-editor {
+    transition: none;
+  }
+  .mobile-folders .col-folders {
+    transform: translateX(var(--drag-offset, 0px));
+  }
   .mobile-folders .col-notes,
   .mobile-folders .col-editor {
-    transform: translateX(100%);
+    transform: translateX(calc(100% + var(--drag-offset, 0px)));
   }
   .mobile-notes .col-folders {
-    transform: translateX(-100%);
+    transform: translateX(calc(-100% + var(--drag-offset, 0px)));
+  }
+  .mobile-notes .col-notes {
+    transform: translateX(var(--drag-offset, 0px));
   }
   .mobile-notes .col-editor {
-    transform: translateX(100%);
+    transform: translateX(calc(100% + var(--drag-offset, 0px)));
   }
   .mobile-editor .col-folders,
   .mobile-editor .col-notes {
-    transform: translateX(-100%);
+    transform: translateX(calc(-100% + var(--drag-offset, 0px)));
+  }
+  .mobile-editor .col-editor {
+    transform: translateX(var(--drag-offset, 0px));
   }
 
   /* ホーム画面に追加したPWA(standalone表示)では画面いっぱいに描画されるため、
