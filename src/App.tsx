@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { db, type StoredNote, type StoredFolder } from './lib/db'
 import { createDraftNote, shouldDiscardDraft, deriveTitle } from './lib/draftNote'
 import { getGithubSettings, saveGithubSettings, type GithubSettings } from './lib/githubSettings'
-import { buildIndex, search, indexNote, removeNoteFromIndex, type SearchIndex } from './lib/search'
+import { buildIndexAsync, search, indexNote, removeNoteFromIndex, type SearchIndex } from './lib/search'
 import { fullSync } from './lib/fullSync'
 import { pushFolders } from './lib/folderSync'
 import { createFolder, deleteFolder, reorderFolders, topFolder, isTrashFolder } from './lib/folders'
@@ -96,9 +96,13 @@ export default function App() {
     // 互換性維持
   }
 
+  // 全件からの索引再構築は件数が多いと重い処理のため、本当に必要な場合
+  // (索引がまだ無い＝初回起動、またはバックアップ復元で全データが丸ごと
+  // 置き換わった場合)だけ呼ぶ。チャンク分割版(buildIndexAsync)を使い、
+  // メインスレッドを長時間ブロックしないようにする。
   const rebuildSearchIndex = async () => {
     const all = await db.notes.toArray()
-    searchIndexRef.current = buildIndex(
+    searchIndexRef.current = await buildIndexAsync(
       all.filter((n) => !n.deleted).map((n) => ({ id: n.id, title: n.title, body: n.body })),
     )
   }
@@ -109,6 +113,20 @@ export default function App() {
       removeNoteFromIndex(searchIndexRef.current, note.id)
     } else {
       indexNote(searchIndexRef.current, { id: note.id, title: note.title, body: note.body })
+    }
+  }
+
+  // 同期で実際に変化したノートだけを索引に反映する。索引がまだ無い場合
+  // (初回起動)は全件構築にフォールバックする。「同期のたびに全件再構築」を
+  // やめることで、通常利用時の同期(差分がごく少数)でのメインスレッドブロックを
+  // ほぼ無くす。
+  const applySearchIndexUpdate = async (updatedNotes: StoredNote[] | null) => {
+    if (!searchIndexRef.current) {
+      await rebuildSearchIndex()
+      return
+    }
+    if (updatedNotes) {
+      for (const n of updatedNotes) updateSearchIndexForNote(n)
     }
   }
 
@@ -170,10 +188,11 @@ export default function App() {
       syncInFlightRef.current = true
       try {
         await recoverEmergencySave()
+        let syncResult: Awaited<ReturnType<typeof fullSync>> | null = null
         if (navigator.onLine) {
           try {
-            const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
-            setConflicts(result.conflicts)
+            syncResult = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+            setConflicts(syncResult.conflicts)
             setSyncError(null)
           } catch (err) {
             // バッチごとに永続化しているため、途中で失敗してもここまでの分はIndexedDBに
@@ -186,7 +205,7 @@ export default function App() {
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
         await loadFolderAndDraft(allFolders)
-        await rebuildSearchIndex()
+        await applySearchIndexUpdate(syncResult?.updatedNotes ?? null)
       } finally {
         syncInFlightRef.current = false
       }
@@ -548,8 +567,9 @@ export default function App() {
   const handleSyncNow = async () => {
     if (!settings || syncInFlightRef.current) return
     syncInFlightRef.current = true
+    let result: Awaited<ReturnType<typeof fullSync>> | null = null
     try {
-      const result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+      result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
       setConflicts(result.conflicts)
       setSyncError(null)
     } catch (err) {
@@ -557,7 +577,7 @@ export default function App() {
     } finally {
       setSyncProgress(null)
       await refreshPendingCount()
-      await rebuildSearchIndex()
+      await applySearchIndexUpdate(result?.updatedNotes ?? null)
       await loadTrashCount()
       syncInFlightRef.current = false
     }
@@ -573,11 +593,12 @@ export default function App() {
     if (settings) {
       const result = await fullSync(settings, githubClient)
       setConflicts(result.conflicts)
+      await applySearchIndexUpdate(result.updatedNotes)
     } else {
       setConflicts(conflicts.filter((c) => c.id !== conflict.id))
+      updateSearchIndexForNote(choice === 'local' ? { ...conflict.localNote, baseSha: conflict.remoteSha, dirty: true } : { ...conflict.remoteNote, baseSha: conflict.remoteSha, dirty: false })
     }
     await refreshPendingCount()
-    await rebuildSearchIndex()
   }
 
   if (!unlocked) {

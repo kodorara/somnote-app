@@ -115,6 +115,11 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
     expect(newNote?.title).toBe('タイトルA')
     const untouched = await db.notes.get('existing')
     expect(untouched?.body).toBe('既存の本文')
+
+    // updatedNotesには実際に変化したノート(a)だけが入り、変化していない既存ノートは
+    // 含まれない。呼び出し側(App.tsx)が検索索引を差分更新する際、全件再構築せずに
+    // 済ませるための絞り込み。
+    expect(result.updatedNotes.map((n) => n.id)).toEqual(['a'])
   })
 
   it('does not overwrite a locally-created folder that has not been pushed yet, when the remote folders.json is unchanged', async () => {

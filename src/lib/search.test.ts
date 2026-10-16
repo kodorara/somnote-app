@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildIndex, search, indexNote, removeNoteFromIndex, createIndex } from './search'
+import { buildIndex, buildIndexAsync, search, indexNote, removeNoteFromIndex, createIndex } from './search'
 
 describe('search', () => {
   it('finds a note by a title substring at the start', () => {
@@ -59,6 +59,34 @@ describe('search', () => {
     const elapsed = performance.now() - startTime
     expect(results).toEqual(['special'])
     expect(elapsed).toBeLessThan(100) // 索引再構築がなければ数ミリ秒で完了する
+  })
+
+  it('buildIndexAsync produces the same searchable index as the synchronous buildIndex', async () => {
+    const notes = [
+      { id: 'a', title: '生きる意味は、今つくる。', body: '本文a' },
+      { id: 'b', title: '戦争賛美', body: '本文b' },
+    ]
+    const idx = await buildIndexAsync(notes, 1) // チャンクサイズ1で複数回yieldさせる
+    expect(search(idx, '生きる')).toEqual(['a'])
+    expect(search(idx, '戦争')).toEqual(['b'])
+  })
+
+  it('buildIndexAsync yields control between chunks instead of blocking in one synchronous pass', async () => {
+    // 競合するsetTimeout(0)タスクが、buildIndexAsyncの完了より先に割り込んで実行できる
+    // ことを確認する(= 全件を一度の同期処理で終わらせていない証拠)
+    const notes = Array.from({ length: 10 }, (_, i) => ({ id: `id-${i}`, title: `t${i}`, body: `b${i}` }))
+    const order: string[] = []
+    const otherTask = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        order.push('other-task')
+        resolve()
+      }, 0)
+    })
+    const indexTask = buildIndexAsync(notes, 3).then(() => {
+      order.push('index-done')
+    })
+    await Promise.all([otherTask, indexTask])
+    expect(order).toEqual(['other-task', 'index-done'])
   })
 })
 

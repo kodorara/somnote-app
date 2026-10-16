@@ -1,4 +1,4 @@
-import { db, type StoredFolder } from './db'
+import { db, type StoredFolder, type StoredNote } from './db'
 import { parseNote } from './frontmatter'
 import { runSync, type GithubLike, type ConflictItem } from './sync'
 import type { getTree, getContent, putContent, deleteContent } from './github'
@@ -22,7 +22,7 @@ export async function fullSync(
   settings: GithubSettings,
   github: FullSyncGithub,
   onPullProgress?: (done: number, total: number) => void,
-): Promise<{ pushed: number; pulled: number; conflicts: ConflictItem[] }> {
+): Promise<{ pushed: number; pulled: number; conflicts: ConflictItem[]; updatedNotes: StoredNote[] }> {
   const { owner, repo, token } = settings
   const { tree } = await github.getTree(owner, repo, 'main', token)
 
@@ -94,5 +94,12 @@ export async function fullSync(
   const toPersist = updated.filter((n) => !conflictIdSet.has(n.id))
   await db.notes.bulkPut(toPersist)
 
-  return { pushed: plan.toPush.length, pulled: plan.toPull.length, conflicts }
+  // 検索索引の差分更新に使うため、「実際にpush/pullされたノート」だけを返す。
+  // updated自体はローカルの全件(未変化のものも含む)なので、plan.toPush/toPullの
+  // IDと突き合わせて絞り込む。これにより呼び出し側は毎回全件で索引を再構築せずに
+  // 済み、メインスレッドを長時間ブロックしない。
+  const changedIds = new Set<string>([...plan.toPush, ...plan.toPull.map((t) => t.id)])
+  const updatedNotes = toPersist.filter((n) => changedIds.has(n.id))
+
+  return { pushed: plan.toPush.length, pulled: plan.toPull.length, conflicts, updatedNotes }
 }
