@@ -433,6 +433,47 @@ export default function App() {
     await refreshPendingCount()
   }
 
+  // メモ一覧の複数選択から呼ばれる一括フォルダ移動。単体移動(moveNoteToFolder)と
+  // 同じくbaseSha: null + pendingOldPathの記録で、新パスへの新規作成pushと
+  // 旧パスのDELETEを同期時に正しく行わせる。
+  const bulkMoveNotes = async (ids: string[], newFolderName: string) => {
+    const targets = (await db.notes.bulkGet(ids)).filter(
+      (n): n is StoredNote => !!n && n.folder !== newFolderName,
+    )
+    if (targets.length === 0) return
+    const now = new Date().toISOString()
+    const moved = targets.map((n) => ({
+      ...n,
+      folder: newFolderName,
+      baseSha: null,
+      dirty: true,
+      pendingOldPath: n.baseSha !== null ? { folder: n.folder, sha: n.baseSha } : (n.pendingOldPath ?? null),
+      updatedAt: now,
+    }))
+    await db.notes.bulkPut(moved)
+    for (const n of moved) updateSearchIndexForNote(n)
+    const movedIds = new Set(moved.map((n) => n.id))
+    setNotes((prev) => prev.filter((n) => !movedIds.has(n.id)))
+    if (activeNote && movedIds.has(activeNote.id)) setActiveNote(null)
+    await refreshPendingCount()
+  }
+
+  // メモ一覧の複数選択から呼ばれる一括ゴミ箱移動(deletedフラグを立てるだけの
+  // 仮想フォルダ方式。deleteActiveNoteと同じ扱い)。
+  const bulkDeleteNotes = async (ids: string[]) => {
+    const targets = (await db.notes.bulkGet(ids)).filter((n): n is StoredNote => !!n && !n.deleted)
+    if (targets.length === 0) return
+    const now = new Date().toISOString()
+    const deleted = targets.map((n) => ({ ...n, deleted: true, dirty: true, updatedAt: now }))
+    await db.notes.bulkPut(deleted)
+    for (const n of deleted) updateSearchIndexForNote(n)
+    const deletedIds = new Set(deleted.map((n) => n.id))
+    setNotes((prev) => prev.filter((n) => !deletedIds.has(n.id)))
+    if (activeNote && deletedIds.has(activeNote.id)) setActiveNote(null)
+    await refreshPendingCount()
+    await loadTrashCount()
+  }
+
 
   const handleCreateFolder = async (name: string) => {
     setFolderError(null)
@@ -722,6 +763,9 @@ export default function App() {
               sortBy={sortBy}
               highlightQuery={searchQuery}
               isTrash={isTrashFolder(selectedFolder ?? '')}
+              folders={folders}
+              onBulkMove={bulkMoveNotes}
+              onBulkDelete={bulkDeleteNotes}
               onSelect={async (id) => {
                 await leaveEditor()
                 const n = await db.notes.get(id)

@@ -38,5 +38,13 @@ export function reorderFolders(folders: StoredFolder[], orderedIds: string[]): S
 
 // 現在表示中のフォルダ(一番上=seqが最小)を返す。新規起動時の初期フォルダ決定に使う。
 export function topFolder(folders: StoredFolder[]): StoredFolder | undefined {
-  return [...folders].sort((a, b) => a.seq - b.seq)[0]
+  return sortedBySeq(folders)[0]
+}
+
+// フォルダ一覧画面(FolderList)の表示順と全く同じ並び順で返す。フォルダを選ぶUIが
+// 複数箇所(フォルダ一覧本体、メモ編集画面のフォルダ移動セレクト、メモ一覧の複数選択
+// 一括移動セレクト等)にあるため、「同じseq昇順」であることをこの1関数に集約し、
+// 個別に`.sort()`を書いて順序がずれることを防ぐ。
+export function sortedBySeq(folders: StoredFolder[]): StoredFolder[] {
+  return [...folders].sort((a, b) => a.seq - b.seq)
 }

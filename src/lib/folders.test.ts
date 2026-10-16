@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './db'
-import { createFolder, deleteFolder, reorderFolders, topFolder, isTrashFolder } from './folders'
+import { createFolder, deleteFolder, reorderFolders, topFolder, isTrashFolder, sortedBySeq } from './folders'
 
 beforeEach(async () => {
   await db.folders.clear()
@@ -84,6 +84,19 @@ describe('topFolder', () => {
 
   it('returns undefined for an empty list', () => {
     expect(topFolder([])).toBeUndefined()
+  })
+})
+
+describe('sortedBySeq', () => {
+  it('returns folders sorted by seq ascending without mutating the input array', () => {
+    const folders = [
+      { folderId: 'b', name: 'B', color: '#000', seq: 2 },
+      { folderId: 'a', name: 'A', color: '#000', seq: 0 },
+      { folderId: 'c', name: 'C', color: '#000', seq: 1 },
+    ]
+    const result = sortedBySeq(folders)
+    expect(result.map((f) => f.folderId)).toEqual(['a', 'c', 'b'])
+    expect(folders.map((f) => f.folderId)).toEqual(['b', 'a', 'c']) // 元の配列は変更されない
   })
 })
 

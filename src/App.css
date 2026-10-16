@@ -238,6 +238,10 @@
 }
 
 /* — note list — */
+.note-list-wrap {
+  display: flex;
+  flex-direction: column;
+}
 .note-list {
   list-style: none;
   margin: 0;
@@ -245,8 +249,8 @@
 }
 .note-list li button {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
   text-align: left;
   background: transparent;
@@ -255,13 +259,64 @@
   padding: 11px var(--space-4);
   cursor: pointer;
   color: var(--color-text);
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 .note-list li button:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 .note-list li button[aria-current='true'] {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
+.note-list li.is-selected button {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+.note-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
 .note-list .note-title { font-size: 14px; line-height: 1.45; }
 .note-list .note-meta { font-size: 11px; color: var(--color-text-muted); }
+
+.note-select-indicator {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.note-select-indicator.is-checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* — note list bulk-select bar — */
+.note-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.note-bulk-count {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.note-bulk-bar .action-bar-folder-select {
+  flex: 1;
+  max-width: 160px;
+}
+.note-bulk-delete-btn {
+  flex: none;
+  padding: 6px 10px;
+}
 
 /* — editor — */
 .editor {

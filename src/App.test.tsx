@@ -500,6 +500,124 @@ describe('moving a note to a different folder', () => {
   })
 })
 
+describe('bulk multi-select in the note list', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+  // App全体のdoSync等(buildIndexAsyncの内部setTimeout(0)ヤマ等)が実時間の
+  // setTimeoutに依存しているため、ここではfake timersを使わず、長押し閾値
+  // (500ms)を実際に待つ
+  const longPress = async (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
+  }
+
+  it('bulk-moves long-pressed and tapped notes to another folder, matching the folder list order in the picker', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+    await db.notes.put({
+      id: 'n1', title: 'メモ1', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文1', baseSha: 'sha1', dirty: false,
+    })
+    await db.notes.put({
+      id: 'n2', title: 'メモ2', folder: '前ノート', seq: 1, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文2', baseSha: 'sha2', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [
+        { path: 'notes/前ノート/n1.md', sha: 'sha1' },
+        { path: 'notes/前ノート/n2.md', sha: 'sha2' },
+      ],
+      truncated: false,
+    })
+    const { container } = render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    await longPress(await screen.findByText('メモ1'))
+    expect(screen.getByText('1件選択中')).toBeInTheDocument()
+    fireEvent.pointerDown(screen.getByText('メモ2'), { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(screen.getByText('メモ2'), { clientX: 100, clientY: 100 })
+    fireEvent.click(screen.getByText('メモ2'))
+    expect(screen.getByText('2件選択中')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: '選択したメモをフォルダ移動' }), {
+      target: { value: '仕事' },
+    })
+
+    await waitFor(async () => {
+      const n1 = await db.notes.get('n1')
+      const n2 = await db.notes.get('n2')
+      expect(n1?.folder).toBe('仕事')
+      expect(n2?.folder).toBe('仕事')
+      expect(n1?.dirty).toBe(true)
+      expect(n2?.dirty).toBe(true)
+    })
+    expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
+  })
+
+  it('bulk-moves notes to the folder in seq order regardless of the folders array order', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    // 「前ノート」(beforeEachで追加済み, seq:0)を起動時のトップフォルダのまま保ち、
+    // 「趣味」はそれより後ろ(seq:5)に置く。フォルダ一覧の表示順と同じ並びで
+    // ピッカーに出ることを確認する
+    await db.folders.put({ folderId: '2', name: '趣味', color: '#00ff00', seq: 5 })
+    await db.notes.put({
+      id: 'n1', title: 'メモ1', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文1', baseSha: 'sha1', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+    const { container } = render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    await longPress(await screen.findByText('メモ1'))
+    const select = screen.getByRole('combobox', { name: '選択したメモをフォルダ移動' })
+    const options = Array.from(select.querySelectorAll('option')) as HTMLOptionElement[]
+    expect(options.map((o) => o.value)).toEqual(['', '前ノート', '趣味'])
+  })
+
+  it('bulk-deletes (moves to trash) the selected notes', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'n1', title: 'メモ1', folder: '前ノート', seq: 0, tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false, llmLinks: [], body: '本文1', baseSha: 'sha1', dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
+    })
+    const { container } = render(<App />)
+    expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    await longPress(await screen.findByText('メモ1'))
+    fireEvent.click(screen.getByRole('button', { name: '選択したメモをゴミ箱に移動' }))
+
+    await waitFor(async () => {
+      const n1 = await db.notes.get('n1')
+      expect(n1?.deleted).toBe(true)
+      expect(n1?.dirty).toBe(true)
+    })
+  })
+})
+
 
 describe('startup folder selection', () => {
   it('opens the draft in the folder with the smallest seq, not insertion order', async () => {

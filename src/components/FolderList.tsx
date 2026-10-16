@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
+import { sortedBySeq } from '../lib/folders'
 import { TrashIcon, GearIcon } from './icons'
 
 interface Props {
@@ -44,7 +45,7 @@ export function FolderList({
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
 
   const byId = new Map(folders.map((f) => [f.folderId, f]))
-  const baseOrder = [...folders].sort((a, b) => a.seq - b.seq).map((f) => f.folderId)
+  const baseOrder = sortedBySeq(folders).map((f) => f.folderId)
   const order = dragOrder ?? baseOrder
 
   // ドラッグ中、指/カーソルが各フォルダ行の中点より上にあるかどうかで

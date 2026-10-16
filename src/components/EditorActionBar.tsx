@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { StoredFolder } from '../lib/db'
+import { sortedBySeq } from '../lib/folders'
 import {
   SaveIcon,
   FolderIcon,
@@ -77,7 +78,7 @@ export function EditorActionBar({
             value={currentFolder}
             onChange={(e) => onMoveFolder(e.target.value)}
           >
-            {folders.map((f) => (
+            {sortedBySeq(folders).map((f) => (
               <option key={f.folderId} value={f.name}>
                 {f.name}
               </option>

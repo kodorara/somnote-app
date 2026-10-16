@@ -49,6 +49,17 @@ describe('EditorActionBar', () => {
     expect(onMoveFolder).toHaveBeenCalledWith('プライベート')
   })
 
+  it('lists folder options in seq order, matching the folder list screen, regardless of prop array order', () => {
+    const outOfOrderFolders = [
+      { folderId: 'f2', name: 'プライベート', seq: 1, color: 'green' },
+      { folderId: 'f3', name: '趣味', seq: 2, color: 'red' },
+      { folderId: 'f1', name: '仕事', seq: 0, color: 'blue' },
+    ]
+    render(<EditorActionBar {...defaultProps} folders={outOfOrderFolders} />)
+    const options = screen.getAllByRole('option') as HTMLOptionElement[]
+    expect(options.map((o) => o.value)).toEqual(['仕事', 'プライベート', '趣味'])
+  })
+
   it('toggles search row and calls onSearchChange', () => {
     const onSearchChange = vi.fn()
     render(<EditorActionBar {...defaultProps} onSearchChange={onSearchChange} />)
