@@ -82,6 +82,43 @@ describe('App startup', () => {
     expect(stored?.dirty).toBe(false)
     expect(stored?.baseSha).toBe('pushed-sha')
   })
+
+  it('displays the editor with a draft note immediately from local data without waiting for fullSync to resolve', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    // fullSync で呼ばれる getTree を未解決の Promise にする
+    vi.spyOn(githubClient, 'getTree').mockReturnValue(new Promise(() => {}))
+    render(<App />)
+    // fullSync が pending のままでも、ローカル先行表示によりエディタが表示される
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    expect(textarea).toBeInTheDocument()
+    expect(textarea).toHaveValue('')
+  })
+
+  it('does not overwrite user edits in activeNote draft when background fullSync finishes later', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    let resolveTree: (val: { tree: never[]; truncated: boolean }) => void = () => {}
+    const treePromise = new Promise<{ tree: never[]; truncated: boolean }>((resolve) => {
+      resolveTree = resolve
+    })
+    vi.spyOn(githubClient, 'getTree').mockReturnValue(treePromise)
+
+    render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    expect(textarea).toHaveValue('')
+
+    // ユーザーが先行表示された下書きに文字を入力し始める
+    fireEvent.change(textarea, { target: { value: 'ユーザーが書き始めた重要な下書き' } })
+    expect(textarea).toHaveValue('ユーザーが書き始めた重要な下書き')
+
+    // バックグラウンド同期が完了する
+    await act(async () => {
+      resolveTree({ tree: [], truncated: false })
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    // 同期完了後も、ユーザーが入力した下書きが空下書きで上書きされていないこと
+    expect(textarea).toHaveValue('ユーザーが書き始めた重要な下書き')
+  })
 })
 
 describe('mobile swipe navigation', () => {
@@ -773,6 +810,10 @@ describe('pull to refresh and editor action bar', () => {
     const getTreeSpy = vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
     render(<App />)
     await screen.findByRole('textbox', { name: '本文' })
+    await waitFor(() => expect(getTreeSpy).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
     const initialCallCount = getTreeSpy.mock.calls.length
 
     const pullContainer = screen.getByTestId('pull-to-refresh')

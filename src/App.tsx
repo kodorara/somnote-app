@@ -34,6 +34,7 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [folders, setFolders] = useState<StoredFolder[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
+  const selectedFolderRef = useRef<string | null>(null)
   const [notes, setNotes] = useState<StoredNote[]>([])
   const [trashCount, setTrashCount] = useState(0)
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({})
@@ -79,7 +80,7 @@ export default function App() {
   const handleBackupRestored = async () => {
     const allFolders = await db.folders.toArray()
     setFolders(allFolders)
-    await loadFolderAndDraft(allFolders)
+    await openInitialDraft(allFolders)
     await rebuildSearchIndex()
     void loadCounts()
     resetSearch()
@@ -163,12 +164,15 @@ export default function App() {
 
 
 
-  const loadFolderAndDraft = async (allFolders: StoredFolder[]) => {
+  // 起動時およびバックアップ復元時に、一番上のフォルダを開いて新規下書きをセットする。
+  // バックグラウンド同期完了ハンドラからは絶対に呼ばない(ユーザー入力中の下書きを上書きしないため)。
+  const openInitialDraft = async (allFolders: StoredFolder[]) => {
     // 起動時は常に一番上(表示順が最小)のフォルダで新規メモを書き始める。
     // フォルダの並び替え(上下ボタン)で、どのフォルダを起動時の既定にするか選べる。
     const folder = topFolder(allFolders)
     if (!folder) return
     setSelectedFolder(folder.name)
+    selectedFolderRef.current = folder.name
 
     const folderNotes = await db.notes.where('folder').equals(folder.name).toArray()
     setNotes(folderNotes)
@@ -179,6 +183,20 @@ export default function App() {
     const draft = createDraftNote(folder.name, maxSeq)
     setActiveNote(draft)
     setMobileScreen('editor')
+  }
+
+  // 同期完了時などに、現在選択中フォルダのメモ一覧だけを再取得する。
+  // activeNoteには一切触らないため、編集中メモや下書きの上書き事故が起きない。
+  const refreshNotesForSelectedFolder = async () => {
+    const current = selectedFolderRef.current
+    if (!current) return
+    if (isTrashFolder(current)) {
+      setNotes(await db.notes.filter((n) => !!n.deleted).toArray())
+    } else {
+      setNotes(await db.notes.where('folder').equals(current).toArray())
+    }
+    await refreshPendingCount()
+    void loadCounts()
   }
 
   // pagehide/beforeunload時に緊急退避された本文があれば、IndexedDB側より新しい場合に
@@ -204,7 +222,15 @@ export default function App() {
   useEffect(() => {
     if (!settings) return
 
-    const doSync = async () => {
+    // 1. ローカルデータで即座に画面を表示する(ネットワーク待ちなし)
+    const showLocalFirst = async () => {
+      const allFolders = await db.folders.toArray()
+      setFolders(allFolders)
+      await openInitialDraft(allFolders)
+    }
+
+    // 2. バックグラウンドで同期し、完了後に一覧と索引だけ差分更新する
+    const syncInBackground = async () => {
       if (syncInFlightRef.current) return
       syncInFlightRef.current = true
       try {
@@ -225,13 +251,14 @@ export default function App() {
         }
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
-        await loadFolderAndDraft(allFolders)
+        await refreshNotesForSelectedFolder()
         await applySearchIndexUpdate(syncResult?.updatedNotes ?? null)
       } finally {
         syncInFlightRef.current = false
       }
     }
-    doSync()
+
+    void showLocalFirst().then(() => syncInBackground())
 
     const goOnline = () => setOnline(true)
     const goOffline = () => setOnline(false)
@@ -256,6 +283,10 @@ export default function App() {
   useEffect(() => {
     notesRef.current = notes
   }, [notes])
+
+  useEffect(() => {
+    selectedFolderRef.current = selectedFolder
+  }, [selectedFolder])
 
   useEffect(() => {
     lastSavedBodyRef.current = activeNote?.body ?? null
