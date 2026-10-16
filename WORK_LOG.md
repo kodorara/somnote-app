@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは239/239全通過。ビルド正常。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）のフェーズ1完了。
+テストは243/243全通過。ビルド正常。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）のフェーズ1・フェーズ2完了。
 
 ---
 
@@ -125,4 +125,25 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - 起動直後にユーザーが下書きに入力した内容が、バックグラウンド同期完了後も上書きされず維持されることの回帰テストを追加。
     - pull-to-refresh テストで起動時バックグラウンド同期の完了待ちタイミングを調整。
   - テスト 239/239 全通過、ビルド成功、コミット（`434b7e9`）、GitHub Actions デプロイ完了（Run `38930094822`）、本番ライブ確認（初期化・クリーンアップ含む）完了。
+
+### フェーズ2: スワイプを「指に追従」させる(完了)
+- **課題:** `pointerdown` と `pointerup` の2点間の移動距離のみで判定しており、ドラッグ中は画面が動かず、指を離した瞬間に一気に0.2秒のアニメーションで動いていたため、操作にワンテンポ遅れる重い印象を与えていた。
+- **対応:**
+  - `src/components/SwipeContainer.tsx`:
+    - `pointermove` ハンドラを追加し、ドラッグ中に親要素（`.columns`）のCSS変数 `--drag-offset` をリアルタイム更新。
+    - ドラッグ開始時に `.is-dragging` クラスを付与し、ドラッグ終了時（`pointerup`/`pointercancel`）にオフセットを `0px` に戻してクラスを解除。
+    - 縦スクロール判定（`Math.abs(deltaY) > Math.abs(rawDeltaX)`）時にドラッグをキャンセルして `0px` にリセット。
+    - 画面遷移先が存在しない境界方向（フォルダ画面での右ドラッグ、エディタ画面での左ドラッグ等）へのドラッグ量を `0.2` 倍に減衰（ラバーバンド抵抗）させて余白露出を防止。
+    - ポインタがコンテナ外へ外れても追従を維持できるよう Pointer Capture（`setPointerCapture`/`releasePointerCapture`）を導入。
+  - `src/App.css`:
+    - `.columns.is-dragging .col-folders, .col-notes, .col-editor` に `transition: none` を適用。
+    - 各カラムの `translateX` に `var(--drag-offset, 0px)` を組み込み、中央カラムと隣接カラムが一体で指に追従するようスタイルを更新。
+  - `src/App.tsx`:
+    - 現在の画面状態（`mobileScreen`）および `activeNote` の有無に応じた `canSwipeLeft`/`canSwipeRight` を `SwipeContainer` に伝達。
+  - テスト拡充 (`src/components/SwipeContainer.test.tsx`):
+    - `pointermove` 中の `--drag-offset` 更新および `.is-dragging` クラス付与・解除テスト。
+    - 縦スクロール優勢時の追従停止とオフセットリセットテスト。
+    - `pointercancel` 時のオフセット初期化テスト。
+    - 境界外ドラッグ時の減衰（0.2倍）テスト。
+  - テスト 243/243 全通過、ビルド成功、コミット（`497721f`）、GitHub Actions デプロイ完了（Run `38931631088`）、本番ライブ確認完了。
 
