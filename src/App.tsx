@@ -24,6 +24,7 @@ import { Settings } from './components/Settings'
 import { AppLock } from './components/AppLock'
 import { checkPassword, isUnlocked, setUnlocked } from './lib/appLock'
 import { writeEmergencySave, readEmergencySave, clearEmergencySave } from './lib/emergencySave'
+import type { GestureAxis } from './lib/gestureLock'
 import './App.css'
 
 type MobileScreen = 'folders' | 'notes' | 'editor'
@@ -63,6 +64,7 @@ export default function App() {
   const [folderError, setFolderError] = useState<string | null>(null)
   const syncInFlightRef = useRef(false)
   const searchIndexRef = useRef<SearchIndex | null>(null)
+  const gestureLockRef = useRef<GestureAxis>('none')
 
   // ゴミ箱件数とフォルダごとの件数を1回のtoArray()スキャンでまとめて計算する
   // (trashCount/folderCountsを別々にスキャンして往復を倍にしない)
@@ -728,7 +730,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <PullToRefresh onRefresh={handlePullToRefresh} isRefreshing={isSyncing} disabled={!online}>
+      <PullToRefresh
+        onRefresh={handlePullToRefresh}
+        isRefreshing={isSyncing}
+        disabled={!online}
+        gestureLockRef={gestureLockRef}
+      >
         {syncProgress && (
           <p className="sync-progress">
             同期中... {syncProgress.done}/{syncProgress.total}件
@@ -748,6 +755,7 @@ export default function App() {
           onSwipeRight={handleSwipeRight}
           canSwipeLeft={canSwipeLeftNow}
           canSwipeRight={canSwipeRightNow}
+          gestureLockRef={gestureLockRef}
         >
           <div className="col-folders">
             <div className="column-search-wrap">

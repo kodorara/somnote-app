@@ -65,4 +65,53 @@ describe('PullToRefresh', () => {
     )
     expect(screen.getByText('同期中...')).toBeInTheDocument()
   })
+
+  it('suppresses pull indicator when horizontal drag is dominant (deltaX > deltaY)', () => {
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    // 斜めだが横優勢 (deltaX = 80, deltaY = 30)
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 180, clientY: 130 })
+
+    expect(screen.queryByText('引っ張って同期')).not.toBeInTheDocument()
+    expect(screen.queryByText('離して同期')).not.toBeInTheDocument()
+  })
+
+  it('respects gestureLockRef and ignores pull when locked to horizontal', () => {
+    const lockRef = { current: 'horizontal' as const }
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} gestureLockRef={lockRef}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 100, clientY: 200 })
+
+    expect(screen.queryByText('引っ張って同期')).not.toBeInTheDocument()
+    expect(screen.queryByText('離して同期')).not.toBeInTheDocument()
+  })
+
+  it('updates gestureLockRef to vertical during vertical pull and resets to none on release', () => {
+    const lockRef = { current: 'none' as const }
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} gestureLockRef={lockRef}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 100, clientY: 150 })
+    expect(lockRef.current).toBe('vertical')
+
+    fireEvent.pointerUp(container)
+    expect(lockRef.current).toBe('none')
+  })
 })

@@ -7,8 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは249/249全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）の全フェーズ（フェーズA・フェーズB）完了に加え、その副作用に対する後片付け(下記10節、Claude Code担当)も完了。未コミットの差分が残っているため、デプロイ前にコミット・プッシュが必要。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）のフェーズ1（スワイプ×プルトゥリフレッシュの排他制御）が完了。テストは254/254全通過。ビルド正常。これからコミット・プッシュ・本番デプロイ検証を実施。
 
 ---
 
@@ -211,3 +210,26 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 - **B-2の残存エッジケースの文書化のみ対応:** スワイプ直後に別ノート/フォルダへすぐ遷移すると`leaveEditor`の保存が重複しうる点は、データ損失を伴わない軽微な冗長書き込みのため、コードの複雑化を避けて上記6節に既知の残課題として記録するのみとした。
 
 テスト249/249全通過・ビルド成功を確認済み。
+(その後コミット・デプロイ完了: `25cc56d`)
+
+## 11. ジェスチャー・ゴミ箱・フォルダ改善（2026-10-17）
+
+新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）に基づく実装。
+
+### フェーズ1: スワイプ×プルトゥリフレッシュの排他制御(gestureLockRef設計)(完了)
+- **課題:** `SwipeContainer` で `setPointerCapture` を呼んでも DOM バブリングは停止しないため、親要素の `PullToRefresh` にも `pointermove` が到達。斜めスワイプ時に `PullToRefresh` が反応してインジケータが出現し画面が上下に揺れる問題があった。
+- **対応:**
+  - `src/lib/gestureLock.ts`: `GestureAxis` (`'none' | 'horizontal' | 'vertical'`) および `GestureLockRef` を定義。
+  - `src/App.tsx`: 単一の `gestureLockRef = useRef<GestureAxis>('none')` を作成し、`<PullToRefresh>` と `<SwipeContainer>` の両方に渡して共有。
+  - `src/components/PullToRefresh.tsx`:
+    - `startX` 追跡を追加し、`Math.abs(deltaX) > Math.abs(deltaY)`（横優勢）の時は `setPullDistance(0)` でプル動作を即時抑制。
+    - `gestureLockRef.current === 'horizontal'` の場合は処理をスキップ。
+    - 縦プル優勢判定時に `gestureLockRef.current = 'vertical'` を獲得し、指離脱時（`pointerup`/`pointercancel`）に `'none'` にリセット。
+  - `src/components/SwipeContainer.tsx`:
+    - `gestureLockRef.current === 'vertical'` の場合は処理をスキップ。
+    - 横ドラッグ確定時に `gestureLockRef.current = 'horizontal'` を獲得し、指離脱時に `'none'` にリセット。
+  - テスト拡充:
+    - `PullToRefresh.test.tsx`: 横優勢斜めドラッグのプル抑制、`gestureLockRef` による横ロック時のスキップ、縦プル時のロック状態遷移を検証。
+    - `SwipeContainer.test.tsx`: 縦ロック時のドラッグ抑制、横ドラッグ時のロック状態遷移を検証。
+    - `Editor.test.tsx`: テスト全体並列実行時の高負荷タイムアウトを防ぐため `findByRole` に `timeout: 3000` を付与。
+- **結果:** テスト 254/254 全通過、ビルド成功。

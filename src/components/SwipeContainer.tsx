@@ -1,10 +1,12 @@
 import { useRef, type PointerEvent, type ReactNode } from 'react'
+import type { GestureLockRef } from '../lib/gestureLock'
 
 interface Props {
   onSwipeLeft?: () => void
   onSwipeRight?: () => void
   canSwipeLeft?: boolean
   canSwipeRight?: boolean
+  gestureLockRef?: GestureLockRef
   children: ReactNode
   className?: string
   threshold?: number
@@ -37,6 +39,7 @@ export function SwipeContainer({
   onSwipeRight,
   canSwipeLeft,
   canSwipeRight,
+  gestureLockRef,
   children,
   className,
   threshold = 50,
@@ -98,6 +101,7 @@ export function SwipeContainer({
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== activePointerId.current) return
     if (!startPos.current || isVerticalScroll.current) return
+    if (gestureLockRef?.current === 'vertical') return // PullToRefresh側が既に確定済み
 
     const rawDeltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
@@ -105,6 +109,7 @@ export function SwipeContainer({
     // 縦スクロールと判定される場合はスワイプをキャンセルし、オフセットをリセット
     if (Math.abs(deltaY) > Math.abs(rawDeltaX)) {
       isVerticalScroll.current = true
+      if (gestureLockRef) gestureLockRef.current = 'vertical'
       if (isDragging.current) {
         rootRef.current?.style.setProperty('--drag-offset', '0px')
         rootRef.current?.classList.remove('is-dragging')
@@ -122,6 +127,7 @@ export function SwipeContainer({
 
     if (!isDragging.current) {
       isDragging.current = true
+      if (gestureLockRef) gestureLockRef.current = 'horizontal'
       rootRef.current?.classList.add('is-dragging')
     }
 
@@ -168,6 +174,7 @@ export function SwipeContainer({
     // 指を離した瞬間にオフセットを0に戻し、transitionによるスナップまたはスナップバックを発動させる
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
+    if (gestureLockRef) gestureLockRef.current = 'none'
 
     if (wasVertical || Math.abs(deltaY) > Math.abs(deltaX)) {
       return
@@ -200,6 +207,7 @@ export function SwipeContainer({
     isVerticalScroll.current = false
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
+    if (gestureLockRef) gestureLockRef.current = 'none'
   }
 
   return (

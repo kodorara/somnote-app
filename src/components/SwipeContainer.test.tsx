@@ -293,4 +293,37 @@ describe('SwipeContainer', () => {
     fireEvent.pointerUp(container, { pointerId: 1, clientX: 150, clientY: 100 })
     expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
   })
+
+  it('respects gestureLockRef and ignores drag when locked to vertical', () => {
+    const lockRef = { current: 'vertical' as const }
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()} gestureLockRef={lockRef}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('')
+    expect(container).not.toHaveClass('is-dragging')
+  })
+
+  it('updates gestureLockRef to horizontal during horizontal drag and resets to none on release', () => {
+    const lockRef = { current: 'none' as const }
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()} gestureLockRef={lockRef}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    expect(lockRef.current).toBe('horizontal')
+
+    fireEvent.pointerUp(container, { clientX: 160, clientY: 100 })
+    expect(lockRef.current).toBe('none')
+  })
 })

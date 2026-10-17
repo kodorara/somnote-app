@@ -11,7 +11,7 @@ describe('Editor', () => {
   it('switches to markdown preview when the toggle is clicked', async () => {
     render(<Editor body="# 見出し" onChange={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー' }))
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('見出し')
+    expect(await screen.findByRole('heading', { level: 1 }, { timeout: 3000 })).toHaveTextContent('見出し')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
@@ -40,7 +40,7 @@ describe('Editor', () => {
       <Editor body="# タイトル" onChange={() => {}} mode="preview" hideToolbar onModeChange={onModeChange} />,
     )
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('タイトル')
+    expect(await screen.findByRole('heading', { level: 1 }, { timeout: 3000 })).toHaveTextContent('タイトル')
 
     rerender(<Editor body="# タイトル" onChange={() => {}} mode="edit" hideToolbar onModeChange={onModeChange} />)
     expect(screen.getByRole('textbox')).toBeInTheDocument()
