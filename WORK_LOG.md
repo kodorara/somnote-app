@@ -422,3 +422,16 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 - スクロール中の長押しタイマー不発火対策として、`window`の`scroll`イベント(capture)監視を追加する案。
 
 一方、同報告書の「`longPressFiredRef`が1件目の長押しから2件目のタップに残留し、無限ループで握り潰される」という主張は、`NoteList.tsx`の`handlePointerDown`が**毎回無条件にこのフラグをリセットする**実装と矛盾するため、実コード確認の上で不採用とした。**教訓:** 外部からの調査報告・分析結果であっても、具体的な行番号やコードを参照している場合は必ず現在の実コードと1つずつ突き合わせて検証してから適用する(正しい指摘と誤った推測が混在していることがある)。
+
+---
+
+## 10. 外部レビュー依頼書(2件目)への対応(2026-10-18、Claude Code担当)
+
+`docs/somnote-app-gesture-handling-work-report.md`をユーザーが別AIにレビュー依頼し、その回答として`docs/somnote-app-gesture-review-and-instructions-for-claude-code.md`が提出された。指摘された4件を実コードと照合したところ、**全て実際のバグとして確認できた**ため適用した(コミット`daec1aa`)。
+
+1. **[Critical] `gestureLockRef`のデッドロック:** `PullToRefresh.tsx`で`scrollTop > 2`や`disabled`等により`isPulling.current`が`false`のままの状態で`SwipeContainer`が`'vertical'`ロックを立てた場合、`handlePointerUp`が`if (!isPulling.current) return`で早期終了するため、ロックが`'vertical'`のまま永久に固着する不具合があった。これは**リストが先頭以外の位置にスクロールされた状態でタッチを開始するたびに起こり得る**ため、セッション中に断続的に発生していた原因不明のジェスチャー不調の一部を説明しうる、重要度の高い発見だった。`handlePointerDown`/`handlePointerUp`冒頭で早期return前に確実にロックを解放するよう修正。
+2. **[High] `tapHandledRef`の残留:** `NoteList.tsx`の`handlePointerDown`が`tapHandledRef`をリセットしていなかったため、縦スクロールと判定されclick転送が見送られたジェスチャーの後、次の正常なタップが`handleRowClick`で誤って握り潰されることがあった。`handlePointerDown`/`handlePointerCancel`でリセットするよう修正。
+3. **[Medium] 大スワイプ後のキャンセルによる誤タップ:** `SwipeContainer.tsx`の手動クリック転送判定を、最終的な正味移動量だけでなくジェスチャー中の最大移動距離(`maxDistanceRef`)も見るように変更。あわせてSVG要素(`click()`を持たない場合がある)へのタップ時に直近のボタン等へフォールバックする安全策を追加。
+4. **[Low] `window.blur`での固着リセット補強:** `visibilitychange`に加え`blur`イベントでも同様のリセットを行うようにした。
+
+回帰テストを4件追加(`PullToRefresh.test.tsx`×2、`NoteList.test.tsx`×1、`SwipeContainer.test.tsx`×2)。全291テスト通過・ビルド成功・デプロイ完了。
