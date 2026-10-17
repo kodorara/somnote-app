@@ -239,6 +239,48 @@ describe('NoteList', () => {
       expect(onBulkPermanentDelete).toHaveBeenCalledWith(['deleted-1'])
       expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
     })
+
+    it('toggles selection on pointerUp without a click event when displacement is within threshold (reproducing swipe drag suppression)', () => {
+      render(<NoteList {...defaultProps} notes={notes} folders={folders} />)
+      const firstRow = screen.getByText('先に書いたメモ')
+      const secondRow = screen.getByText('後で書いたメモ')
+
+      // 1件目を長押しで選択
+      longPress(firstRow)
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+
+      // 2件目をタップ。実機ではSwipeContainerの微小なブレ検出によってネイティブclickイベントが抑制されるため、
+      // pointerDown -> 2px pointerMove -> pointerUp のみ発火し、clickイベントは発生しない。
+      fireEvent.pointerDown(secondRow, { clientX: 100, clientY: 100 })
+      fireEvent.pointerMove(secondRow, { clientX: 102, clientY: 100 })
+      fireEvent.pointerUp(secondRow, { clientX: 102, clientY: 100 })
+      // clickは呼ばない
+
+      // 2件目がタップで選択され、2件選択中になること
+      expect(screen.getByText('2件選択中')).toBeInTheDocument()
+
+      // もう一度同様にタップすると選択解除されること
+      fireEvent.pointerDown(secondRow, { clientX: 100, clientY: 100 })
+      fireEvent.pointerMove(secondRow, { clientX: 101, clientY: 101 })
+      fireEvent.pointerUp(secondRow, { clientX: 101, clientY: 101 })
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+    })
+
+    it('does not toggle selection on pointerUp without a click event when displacement exceeds threshold (scroll/swipe)', () => {
+      render(<NoteList {...defaultProps} notes={notes} folders={folders} />)
+      const firstRow = screen.getByText('先に書いたメモ')
+      const secondRow = screen.getByText('後で書いたメモ')
+
+      longPress(firstRow)
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+
+      // 閾値(10px)を超える移動(15px)の場合、スワイプ/スクロールとみなされ選択はトグルされない
+      fireEvent.pointerDown(secondRow, { clientX: 100, clientY: 100 })
+      fireEvent.pointerMove(secondRow, { clientX: 100, clientY: 115 })
+      fireEvent.pointerUp(secondRow, { clientX: 100, clientY: 115 })
+
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+    })
   })
 
   it('renders deleted notes when isTrash is true, including original folder name', () => {

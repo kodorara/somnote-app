@@ -76,6 +76,7 @@ export function NoteList({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressFiredRef = useRef(false)
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const tapHandledRef = useRef(false)
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
@@ -113,13 +114,46 @@ export function NoteList({
     if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clearLongPressTimer()
   }
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: ReactPointerEvent<HTMLButtonElement>, id: string) => {
     clearLongPressTimer()
+    const start = pointerStartRef.current
+    pointerStartRef.current = null
+
+    if (longPressFiredRef.current) {
+      // 長押しで既に選択トグル済み。後続のclickイベント(発火する場合)は無視させる
+      longPressFiredRef.current = false
+      return
+    }
+    if (!start) return
+
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) return // スクロール/スワイプ扱い。選択は発火させない
+
+    // 祖先のSwipeContainerが僅かな指のブレでもドラッグとみなし描画をずらすことがあり、
+    // その場合ブラウザはclickイベント自体を発火させない(実機でのみ再現し、
+    // jsdomのfireEvent.clickでは再現しないため既存テストで検出できなかった)。
+    // そのためタップの成立判定と選択実行はここ(pointerup)で完結させ、onClickには依存しない。
+    tapHandledRef.current = true
+    if (multiSelectMode) {
+      toggleSelected(id)
+    } else {
+      onSelect(id)
+    }
+  }
+
+  const handlePointerCancel = () => {
+    clearLongPressTimer()
+    pointerStartRef.current = null
   }
 
   const handleRowClick = (id: string) => {
+    if (tapHandledRef.current) {
+      // pointerupで既に処理済み(通常はこちらが先に通る)。二重実行を防ぐ
+      tapHandledRef.current = false
+      return
+    }
     if (longPressFiredRef.current) {
-      // 長押しで既に選択トグル済みなので、同じ操作由来のクリックは無視する
       longPressFiredRef.current = false
       return
     }
@@ -204,8 +238,8 @@ export function NoteList({
               aria-pressed={multiSelectMode ? selectedIds.has(n.id) : undefined}
               onPointerDown={(e) => handlePointerDown(e, n.id)}
               onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
+              onPointerUp={(e) => handlePointerUp(e, n.id)}
+              onPointerCancel={handlePointerCancel}
               onClick={() => handleRowClick(n.id)}
             >
               {multiSelectMode && (

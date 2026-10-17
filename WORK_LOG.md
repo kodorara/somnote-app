@@ -7,7 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`）のフェーズ1（フォルダ削除の長押し待ち時間を1秒に延長）の実装・テストが完了。テスト全269件通過。ビルド正常。フェーズ1のコミット・プッシュ・本番デプロイ検証を実施。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`）のフェーズ1（フォルダ削除待ち時間1秒化）およびフェーズ2（ゴミ箱・メモ一覧で2件目以降タップ選択化）の実装・テストが完了。テスト全271件通過。ビルド正常。フェーズ2のコミット・プッシュ・本番デプロイ検証を実施予定。
 
 ---
 
@@ -320,3 +320,19 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/App.test.tsx`: `folder deletion and moving notes to trash` describeブロック内の `longPress` ヘルパー待機時間を 550ms から 1050ms へ更新。
 - **結果:** テスト 269/269 全通過、ビルド成功。
 (その後コミット・デプロイ完了: `3582649`、Actions Run `39022962329`、本番ライブ動作確認済み)
+
+### フェーズ2: ゴミ箱・メモ一覧で2件目以降の選択がタップで動作するように修正(完了)
+- **課題:**
+  - 複数選択モード中、2件目以降のメモを選択する際に、長押ししないと選択できない（通常のタップで反応しない）。
+  - 原因: 祖先の `SwipeContainer` が 1〜2px のわずかな指のブレでも `isDragging = true` と判定してドラッグ扱いにするため、実機ブラウザがネイティブ `click` イベントを抑制（キャンセル）してしまう。従来のコードは選択トグルを `onClick` に依存していたため発火しなかった。
+- **対応:**
+  - `src/components/NoteList.tsx`:
+    - `tapHandledRef` を導入。
+    - `handlePointerUp` で移動量が `MOVE_CANCEL_PX`（10px）以内の場合はタップ成立と判定し、その場で即座に `toggleSelected(id)` / `onSelect(id)` を実行して `tapHandledRef.current = true` をセット。
+    - `handleRowClick` では `tapHandledRef.current` が true の場合に早期リターンし二重実行を防止。
+    - `handlePointerCancel` を分離し、ポインタ追跡を安全にリセット。
+  - テスト拡充:
+    - `src/components/NoteList.test.tsx`:
+      - 複数選択モード中に `click` イベントが抑制されても（`pointerDown` → 微小な `pointerMove` 2px → `pointerUp` のみ発火）、2件目のメモがトグル選択され「2件選択中」となることを検証する回帰テストを追加。
+      - 移動量が閾値（10px）を超える場合（15px）は、スワイプ/スクロールとみなされて選択がトグルされないことを検証するテストを追加。
+- **結果:** テスト 271/271 全通過、ビルド成功。
