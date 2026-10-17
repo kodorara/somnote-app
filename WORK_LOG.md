@@ -7,7 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）の全4フェーズ（スワイプ排他制御、フォルダ削除時ゴミ箱移動＆長押し統一、ゴミ箱完全削除機能、フォルダ画面右余白・PWAレイアウト修正）の実装・テストが完了。テストは全269件通過。ビルド正常。フェーズ4のコミット・プッシュ・本番デプロイ検証を実施。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`）のフェーズ1（フォルダ削除の長押し待ち時間を1秒に延長）の実装・テストが完了。テスト全269件通過。ビルド正常。フェーズ1のコミット・プッシュ・本番デプロイ検証を実施。
 
 ---
 
@@ -307,3 +307,15 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/components/SwipeContainer.test.tsx`: `lostpointercapture` によるオフセットリセット確認テスト、`className` 遷移時のオフセットリセット確認テストの2件を追加。
 - **結果:** テスト 269/269 全通過、ビルド成功。
 (その後コミット・デプロイ完了: `8c74bc0`、Actions Run `39019819979`、本番ライブ動作確認済み)
+
+## 6. 実機フィードバック対応(2026-10-17新計画)
+
+### フェーズ1: フォルダ削除の長押し待ち時間を1秒に延長(完了)
+- **課題:**
+  - フォルダ一覧でフォルダ削除判定の待ち時間（`LONG_PRESS_MS = 500`）が短すぎて、画面スクロール時や軽いタッチでも削除確認ダイアログが出てしまう。
+- **対応:**
+  - `src/components/FolderList.tsx`: `LONG_PRESS_MS` を `500` から `1000`（1000ms = 1秒）に変更。
+  - テスト更新:
+    - `src/components/FolderList.test.tsx`: 500msから1000msへのタイマー期待値更新（999msで発火せず、1000msで発火）。
+    - `src/App.test.tsx`: `folder deletion and moving notes to trash` describeブロック内の `longPress` ヘルパー待機時間を 550ms から 1050ms へ更新。
+- **結果:** テスト 269/269 全通過、ビルド成功。
