@@ -7,8 +7,8 @@
 ## 1. 最初にやること
 
 1. このファイル(`HANDOVER.md`)を最後まで読む
-2. **現在着手すべき引き継ぎ書を読む: `../docs/superpowers/plans/2026-10-17-handover-gesture-trash-layout-issues.md`**
-   (このリポジトリの1つ上の階層、`cc-secretary/docs/superpowers/plans/`配下。実機動作確認で判明した4件の不具合・操作性課題についての詳細な原因分析と推奨方針を記載。Claude Codeはこの引き継ぎ書を元に実装計画書を策定すること)
+2. **現在着手すべき計画書を読む: `../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`**
+   (このリポジトリの1つ上の階層、`cc-secretary/docs/superpowers/plans/`配下。Antigravityが作成した引き継ぎ書`2026-10-17-handover-gesture-trash-layout-issues.md`を元に、Claude Codeが実コードを検証した上で策定した実装計画書。`docs/superpowers/plans/`配下に複数のファイルがある場合は、常に**日付が最新のもの**を現在の作業対象とすること)
 3. 計画書内のフェーズを1つずつ順番に着手する。**複数フェーズを並行して進めない。** 1フェーズ完了→検証→ユーザー報告、を終えてから次のフェーズに進む。
 4. 作業前に `git log --oneline -15` で直近のコミット履歴を見て、コミットメッセージの文体(日本語、`type: 概要`形式)に合わせる。
 
