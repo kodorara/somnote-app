@@ -977,42 +977,37 @@
   color: var(--color-text);
 }
 .folder-settings-btn.folder-delete-selected-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent-200);
 }
 .folder-settings-btn.folder-delete-confirm-btn:not(:disabled) {
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent-100);
   font-weight: 600;
 }
 .folder-settings-btn.folder-delete-confirm-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 26%, transparent);
 }
 .folder-settings-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .folder-select-btn.is-delete-selected {
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  color: var(--color-danger);
-  font-weight: 600;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent-100);
 }
 .folder-delete-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
+  flex: none;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  border: 1.5px solid var(--color-border-strong);
-  font-size: 11px;
-  line-height: 1;
-  flex-shrink: 0;
+  border: 1.5px solid var(--color-divider);
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
 }
 .folder-delete-check.is-checked {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 /* — settings & backup — */

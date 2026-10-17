@@ -195,15 +195,14 @@ export function FolderList({
                   }
                 }}
               >
-                {deleteMode && (
+                {deleteMode ? (
                   <span
                     className={`folder-delete-check${isDeleteSelected ? ' is-checked' : ''}`}
                     aria-hidden="true"
-                  >
-                    {isDeleteSelected ? '✓' : ''}
-                  </span>
+                  />
+                ) : (
+                  <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 )}
-                <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 <span className="folder-name">{f.name}</span>
                 {!!noteCounts?.[f.name] && (
                   <span className="folder-count-badge" aria-hidden="true">
