@@ -19,6 +19,10 @@ interface Props {
 // 画面端から始まることはまず無いため衝突しない)。
 const EDGE_ZONE_PX = 24
 
+// 指の動きがこの範囲内であれば「ドラッグではなくタップだった」とみなす許容量。
+// NoteList/FolderList等の既存のMOVE_CANCEL_PXと同じ考え方の値。
+const TAP_TOLERANCE_PX = 10
+
 // targetからroot(SwipeContainer自身)までの祖先を辿り、横方向にスクロール可能な
 // 要素(コードブロックや幅の広い表など)があるかを調べる。固定クラス名のホワイト
 // リストと違い、将来追加されるどんな横スクロール要素にも後付け対応不要で効く。
@@ -49,6 +53,10 @@ export function SwipeContainer({
   const isDragging = useRef<boolean>(false)
   const isVerticalScroll = useRef<boolean>(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  // pointerdown時点でのe.target(Pointer Captureで後から上書きされる前の、本来の
+  // タップ先)を覚えておく。ドラッグもスクロールも成立しなかった(=タップだった)
+  // 場合に、ここへ手動でclickを転送する(詳細はhandlePointerUp参照)。
+  const tapTargetRef = useRef<HTMLElement | null>(null)
 
   const prevClassNameRef = useRef(className)
 
@@ -62,6 +70,7 @@ export function SwipeContainer({
       isVerticalScroll.current = false
       startPos.current = null
       activePointerId.current = null
+      tapTargetRef.current = null
     }
   }, [className])
 
@@ -103,6 +112,21 @@ export function SwipeContainer({
     startPos.current = { x: e.clientX, y: e.clientY }
     isDragging.current = false
     isVerticalScroll.current = false
+    tapTargetRef.current = target
+
+    // Pointer Captureはpointerdownの時点で即座に取得する。横方向の意図が確定して
+    // からに遅らせる案を一度試したが、実機では横スワイプによるページ切り替えその
+    // ものが効かなくなる改悪を引き起こした(ネイティブのスクロール/ジェスチャー
+    // 判定に先に奪われてしまい、後から取得しても間に合わないと見られる)。その
+    // ため取得自体は即座に行い、タップの握り潰され対策はhandlePointerUp側で
+    // 元のタップ先へclickを手動転送する方式に切り替えた。
+    if (typeof e.currentTarget.setPointerCapture === 'function') {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        // jsdom等の未実装環境対策
+      }
+    }
   }
 
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -136,21 +160,6 @@ export function SwipeContainer({
       isDragging.current = true
       if (gestureLockRef) gestureLockRef.current = 'horizontal'
       rootRef.current?.classList.add('is-dragging')
-
-      // Pointer Captureは、横方向の意図が確定した(=実際にドラッグが始まった)この瞬間に
-      // 初めて取得する。pointerdown直後に即座に取得すると、ただの軽いタップでも
-      // この要素(祖先)がポインタを捕捉してしまい、子要素(メモ行のボタン等)が
-      // 以降のpointermove/pointerup/clickを一切受け取れなくなる
-      // (Pointer Captureは対象となるイベントのtargetを捕捉元要素そのものに固定し、
-      // 子要素はそのイベントの伝播経路から外れるため)。これによりタップが握り
-      // 潰されていた実機不具合があったため、ドラッグ確定時まで取得を遅らせる。
-      if (typeof e.currentTarget.setPointerCapture === 'function') {
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId)
-        } catch {
-          // jsdom等の未実装環境対策
-        }
-      }
     }
 
     const { canLeft, canRight } = resolveCanSwipe()
@@ -181,6 +190,7 @@ export function SwipeContainer({
     if (!startPos.current) {
       isDragging.current = false
       isVerticalScroll.current = false
+      tapTargetRef.current = null
       rootRef.current?.style.setProperty('--drag-offset', '0px')
       rootRef.current?.classList.remove('is-dragging')
       return
@@ -189,14 +199,26 @@ export function SwipeContainer({
     const deltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
     const wasVertical = isVerticalScroll.current
+    const wasDragging = isDragging.current
+    const tapTarget = tapTargetRef.current
     startPos.current = null
     isDragging.current = false
     isVerticalScroll.current = false
+    tapTargetRef.current = null
 
     // 指を離した瞬間にオフセットを0に戻し、transitionによるスナップまたはスナップバックを発動させる
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
     if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'
+
+    // ドラッグもスクロールも成立しなかった(=タップだった)場合、Pointer Captureに
+    // よってclickイベントの配送先が本来の要素(メモ行のボタン等)からこの祖先要素へ
+    // 奪われてしまっているため、本来のタップ先へ手動でclickを転送する。これにより
+    // 複数選択モード中の2件目以降のタップ等、子要素のonClickに依存する機能が
+    // Pointer Captureによって握り潰されずに機能する。
+    if (!wasDragging && !wasVertical && tapTarget && Math.hypot(deltaX, deltaY) <= TAP_TOLERANCE_PX) {
+      tapTarget.click()
+    }
 
     if (wasVertical || Math.abs(deltaY) > Math.abs(deltaX)) {
       return
@@ -229,6 +251,7 @@ export function SwipeContainer({
     startPos.current = null
     isDragging.current = false
     isVerticalScroll.current = false
+    tapTargetRef.current = null
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
     if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'

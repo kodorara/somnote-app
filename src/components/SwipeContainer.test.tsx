@@ -382,24 +382,11 @@ describe('SwipeContainer', () => {
     expect(lockRef.current).toBe('vertical')
   })
 
-  it('does not acquire pointer capture on pointerdown alone (so a quick tap never reaches it)', () => {
-    render(
-      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
-        <button>Row</button>
-      </SwipeContainer>,
-    )
-    const container = screen.getByTestId('swipe-container')
-    const setPointerCapture = vi.fn()
-    container.setPointerCapture = setPointerCapture
-
-    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
-    expect(setPointerCapture).not.toHaveBeenCalled()
-  })
-
-  it('acquires pointer capture only once a horizontal drag is confirmed', () => {
-    // pointerdown直後に即座にPointer Captureを取得すると、ただの軽いタップでも
-    // 子要素(メモ行のボタン等)がpointerup/clickを受け取れなくなり、実機でタップが
-    // 握り潰される不具合があった。横方向の意図が確定した瞬間にのみ取得すること。
+  it('acquires pointer capture immediately on pointerdown (needed so real swipes are not stolen by native scrolling)', () => {
+    // 一度「ドラッグ確定まで取得を遅らせる」案を試したが、実機では横スワイプによる
+    // ページ切り替えそのものが効かなくなる改悪を引き起こしたため、取得自体は
+    // pointerdown時点で即座に行う(タップの握り潰され対策は別の仕組みで行う。
+    // 下記の「手動でclickを転送する」テストを参照)。
     render(
       <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
         <div>Content</div>
@@ -410,25 +397,60 @@ describe('SwipeContainer', () => {
     container.setPointerCapture = setPointerCapture
 
     fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
-    fireEvent.pointerMove(container, { clientX: 130, clientY: 102 }) // 横方向優勢
 
     expect(setPointerCapture).toHaveBeenCalledTimes(1)
   })
 
-  it('never acquires pointer capture when the gesture resolves to vertical scroll immediately', () => {
+  it('manually dispatches a click to the originally-touched element when the gesture resolves to a quick tap', () => {
+    // Pointer Captureを即座に取得すると、以降のpointerup/clickイベントの配送先が
+    // 本来タップされた子要素からこの祖先要素に奪われてしまう(実機のみで再現する
+    // 既知のブラウザ挙動)。ドラッグもスクロールも成立しなかった場合は、本来の
+    // タップ先へ手動でclickを転送することで、子要素のonClickに依存する機能
+    // (複数選択モードでのタップ選択等)が握り潰されないようにしている。
+    const onRowClick = vi.fn()
     render(
       <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
-        <div>Content</div>
+        <button onClick={onRowClick}>Row</button>
       </SwipeContainer>,
     )
-    const container = screen.getByTestId('swipe-container')
-    const setPointerCapture = vi.fn()
-    container.setPointerCapture = setPointerCapture
+    const button = screen.getByRole('button', { name: 'Row' })
 
-    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
-    fireEvent.pointerMove(container, { clientX: 105, clientY: 180 }) // 縦方向優勢
+    fireEvent.pointerDown(button, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(button, { clientX: 102, clientY: 101 }) // 1〜2pxの微小なブレのみ
 
-    expect(setPointerCapture).not.toHaveBeenCalled()
+    expect(onRowClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not manually dispatch a click when the gesture became a horizontal drag', () => {
+    const onRowClick = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button onClick={onRowClick}>Row</button>
+      </SwipeContainer>,
+    )
+    const button = screen.getByRole('button', { name: 'Row' })
+
+    fireEvent.pointerDown(button, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(button, { clientX: 140, clientY: 100 }) // 横方向への明確なドラッグ
+    fireEvent.pointerUp(button, { clientX: 140, clientY: 100 })
+
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
+  it('does not manually dispatch a click when the gesture became a vertical scroll', () => {
+    const onRowClick = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button onClick={onRowClick}>Row</button>
+      </SwipeContainer>,
+    )
+    const button = screen.getByRole('button', { name: 'Row' })
+
+    fireEvent.pointerDown(button, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(button, { clientX: 105, clientY: 150 }) // 縦方向への明確なスクロール
+    fireEvent.pointerUp(button, { clientX: 105, clientY: 150 })
+
+    expect(onRowClick).not.toHaveBeenCalled()
   })
 
   it('preserves vertical gestureLockRef when lostpointercapture fires after vertical move', () => {
