@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは249/249全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）の全フェーズ（フェーズA・フェーズB）完了。
+テストは249/249全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）の全フェーズ（フェーズA・フェーズB）完了に加え、その副作用に対する後片付け(下記10節、Claude Code担当)も完了。未コミットの差分が残っているため、デプロイ前にコミット・プッシュが必要。
 
 ---
 
@@ -91,6 +91,10 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 
 - バックアップ復元後に多数のメモが衝突した場合、`ConflictResolver`が1件ずつしか
   解決できない(データ消失ではなくUXの手間の問題)。優先度低、未対応。
+- `handleSwipeRight`はエディタ離脱時の保存(`leaveEditor`)をfire-and-forgetで実行する
+  (下記10節B-2参照)。スワイプ直後に別のノート/フォルダをすぐタップすると、そのタップ
+  ハンドラ自身の`await leaveEditor()`と同じノートへの保存が重複する可能性があるが、
+  同一スナップショットの冗長な書き込みに留まりデータ損失は起きないため許容する。
 - 緊急退避(`emergencySave.ts`)は、一度もIndexedDBに保存されたことのない新規下書きが
   即終了した場合は復元できない(フォルダ等の情報が無いため)。残余リスクとして許容。
 - OSによるプロセス強制終了・バッテリー切れ等、JSが一切実行されない瞬間の
@@ -197,3 +201,13 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
   - `src/App.css`: カラム要素の常時適用ルールから `will-change: transform` を削除し、`.columns.is-dragging` スコープ内にのみ適用することで不要な常時GPUメモリ確保を防止。
 - **結果:** テスト 249/249 全通過、ビルド成功。
 
+## 10. フェーズA・B修正の副作用に対する後片付け(2026-10-17、Claude Code担当)
+
+フェーズA・Bの修正自体は健全だったが、Claude Codeによる再レビューで4件の軽微な副作用(いずれもブロッカーではない)が見つかり、同セッション内でそのまま後片付けを行った。
+
+- **B-4の巻き戻し:** `will-change: transform`を`.columns.is-dragging`限定にスコープしたところ、タップ操作(`FolderList`/`NoteList`の`onSelect`経由、`.is-dragging`クラスが付かない画面遷移)でコンポジットヒントが一切効かなくなる副作用があった。常時適用に戻す(`.col-folders`等の基本ルールに`will-change: transform`を復帰、`.is-dragging`側からは削除)ことで解消。常時適用によるGPUメモリコストは元々軽微と判断していたため、副作用の解消を優先した。
+- **B-1導入によるデッドコードの削除:** `activePointerId`によるシングルタッチガードの導入により、`isExcluded`refとその判定(`handlePointerMove`/`handlePointerUp`内)が実行上到達不可能になっていた(除外対象のポインタは`activePointerId`に設定されないため、ガードで先にreturnする)。`isExcluded`ref自体を削除し、除外時は単純に`return`するだけに整理。
+- **A-3導入後の旧実装の残骸削除:** `updateSelectedFolder`ヘルパー導入後も、旧実装の`selectedFolderRef`同期用`useEffect`(`selectedFolderRef.current = selectedFolder`)が削除されずに残っていた。全呼び出し箇所が`updateSelectedFolder`に統一済みであることを確認した上で削除。この`useEffect`を残すと、将来誰かが`setSelectedFolder`を直接呼ぶコードを追加した際に「一見動いているように見える」罠になり、A-3で解消したはずの競合窓が静かに復活しうるため。
+- **B-2の残存エッジケースの文書化のみ対応:** スワイプ直後に別ノート/フォルダへすぐ遷移すると`leaveEditor`の保存が重複しうる点は、データ損失を伴わない軽微な冗長書き込みのため、コードの複雑化を避けて上記6節に既知の残課題として記録するのみとした。
+
+テスト249/249全通過・ビルド成功を確認済み。

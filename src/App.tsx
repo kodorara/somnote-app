@@ -288,10 +288,6 @@ export default function App() {
   }, [notes])
 
   useEffect(() => {
-    selectedFolderRef.current = selectedFolder
-  }, [selectedFolder])
-
-  useEffect(() => {
     lastSavedBodyRef.current = activeNote?.body ?? null
   }, [activeNote?.id])
 

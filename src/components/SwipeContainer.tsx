@@ -43,7 +43,6 @@ export function SwipeContainer({
 }: Props) {
   const activePointerId = useRef<number | null>(null)
   const startPos = useRef<{ x: number; y: number } | null>(null)
-  const isExcluded = useRef<boolean>(false)
   const isDragging = useRef<boolean>(false)
   const isVerticalScroll = useRef<boolean>(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -79,12 +78,10 @@ export function SwipeContainer({
         target.closest('.action-bar-select') ||
         hasHorizontallyScrollableAncestor(target, rootRef.current))
     ) {
-      isExcluded.current = true
       return
     }
 
     activePointerId.current = e.pointerId
-    isExcluded.current = false
     startPos.current = { x: e.clientX, y: e.clientY }
     isDragging.current = false
     isVerticalScroll.current = false
@@ -100,7 +97,7 @@ export function SwipeContainer({
 
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== activePointerId.current) return
-    if (isExcluded.current || !startPos.current || isVerticalScroll.current) return
+    if (!startPos.current || isVerticalScroll.current) return
 
     const rawDeltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
@@ -153,8 +150,7 @@ export function SwipeContainer({
       }
     }
 
-    if (isExcluded.current || !startPos.current) {
-      startPos.current = null
+    if (!startPos.current) {
       isDragging.current = false
       isVerticalScroll.current = false
       rootRef.current?.style.setProperty('--drag-offset', '0px')
@@ -200,7 +196,6 @@ export function SwipeContainer({
       }
     }
     startPos.current = null
-    isExcluded.current = false
     isDragging.current = false
     isVerticalScroll.current = false
     rootRef.current?.style.setProperty('--drag-offset', '0px')

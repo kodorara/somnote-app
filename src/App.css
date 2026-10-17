@@ -707,14 +707,14 @@
     inset: 0;
     flex-basis: auto;
     transition: transform 0.2s;
+    will-change: transform;
     background: var(--color-bg);
   }
-  /* ドラッグ中は指の動きに即座に追従させるためアニメーションを無効化しGPU合成を最適化 */
+  /* ドラッグ中は指の動きに即座に追従させるためアニメーションを無効化 */
   .columns.is-dragging .col-folders,
   .columns.is-dragging .col-notes,
   .columns.is-dragging .col-editor {
     transition: none;
-    will-change: transform;
   }
   .mobile-folders .col-folders {
     transform: translateX(var(--drag-offset, 0px));
