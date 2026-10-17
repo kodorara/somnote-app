@@ -434,18 +434,23 @@ export default function App() {
     await refreshPendingCount()
   }
 
+  const canSwipeLeftNow = mobileScreen === 'folders' || (mobileScreen === 'notes' && !!activeNote)
+  const canSwipeRightNow = mobileScreen === 'editor' || mobileScreen === 'notes'
+
   const handleSwipeLeft = () => {
+    if (!canSwipeLeftNow) return
     if (mobileScreen === 'folders') {
       setMobileScreen('notes')
-    } else if (mobileScreen === 'notes' && activeNote) {
+    } else if (mobileScreen === 'notes') {
       setMobileScreen('editor')
     }
   }
 
-  const handleSwipeRight = async () => {
+  const handleSwipeRight = () => {
+    if (!canSwipeRightNow) return
     resetSearch()
     if (mobileScreen === 'editor') {
-      await leaveEditor()
+      void leaveEditor()
       setMobileScreen('notes')
     } else if (mobileScreen === 'notes') {
       setMobileScreen('folders')
@@ -745,8 +750,8 @@ export default function App() {
           className={`columns mobile-${mobileScreen}`}
           onSwipeLeft={handleSwipeLeft}
           onSwipeRight={handleSwipeRight}
-          canSwipeLeft={mobileScreen === 'folders' || (mobileScreen === 'notes' && !!activeNote)}
-          canSwipeRight={mobileScreen === 'editor' || mobileScreen === 'notes'}
+          canSwipeLeft={canSwipeLeftNow}
+          canSwipeRight={canSwipeRightNow}
         >
           <div className="col-folders">
             <div className="column-search-wrap">

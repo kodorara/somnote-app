@@ -269,4 +269,28 @@ describe('SwipeContainer', () => {
     // 0.2倍に減衰される (-100 * 0.2 = -20px)
     expect(container.style.getPropertyValue('--drag-offset')).toBe('-20px')
   })
+
+  it('ignores subsequent touches when multi-touch occurs during an active gesture', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    // 1本目の指（pointerId: 1）が触れて動く
+    fireEvent.pointerDown(container, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { pointerId: 1, clientX: 150, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('50px')
+
+    // 2本目の指（pointerId: 2）が同時に触れても無視される
+    fireEvent.pointerDown(container, { pointerId: 2, clientX: 200, clientY: 200 })
+    fireEvent.pointerMove(container, { pointerId: 2, clientX: 300, clientY: 200 })
+    // 1本目の指のオフセットが維持されている
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('50px')
+
+    // 1本目の指を離すとリセットされる
+    fireEvent.pointerUp(container, { pointerId: 1, clientX: 150, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+  })
 })

@@ -270,6 +270,23 @@ describe('mobile swipe navigation', () => {
 
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
   })
+
+  it('swipes right from editor to notes immediately without blocking on leaveEditor completion', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const { container } = render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    fireEvent.change(textarea, { target: { value: '編集中の本文' } })
+
+    // db.notes.put を未解決Promiseにする(leaveEditorの完了を遅延させる)
+    vi.spyOn(db.notes, 'put').mockReturnValue(new Promise(() => {}) as any)
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+
+    // leaveEditorが未完了のままでも、即座にmobile-notesクラスへ切り替わること
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+  })
 })
 
 describe('creating a new note after navigating back via swipe', () => {

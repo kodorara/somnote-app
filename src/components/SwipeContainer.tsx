@@ -41,13 +41,22 @@ export function SwipeContainer({
   className,
   threshold = 50,
 }: Props) {
+  const activePointerId = useRef<number | null>(null)
   const startPos = useRef<{ x: number; y: number } | null>(null)
   const isExcluded = useRef<boolean>(false)
   const isDragging = useRef<boolean>(false)
   const isVerticalScroll = useRef<boolean>(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
+  const resolveCanSwipe = () => ({
+    canLeft: canSwipeLeft ?? !!onSwipeLeft,
+    canRight: canSwipeRight ?? !!onSwipeRight,
+  })
+
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    // 既に別の指のジェスチャーが進行中であれば2本目以降は無視する
+    if (activePointerId.current !== null) return
+
     const rect = rootRef.current?.getBoundingClientRect()
     // rect.width === 0(レイアウト未計算。テスト環境のjsdom等)の場合は、端からの
     // 距離を正しく判定できないため、安全側に倒してエッジスワイプ扱いしない
@@ -74,6 +83,7 @@ export function SwipeContainer({
       return
     }
 
+    activePointerId.current = e.pointerId
     isExcluded.current = false
     startPos.current = { x: e.clientX, y: e.clientY }
     isDragging.current = false
@@ -89,6 +99,7 @@ export function SwipeContainer({
   }
 
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== activePointerId.current) return
     if (isExcluded.current || !startPos.current || isVerticalScroll.current) return
 
     const rawDeltaX = e.clientX - startPos.current.x
@@ -117,8 +128,7 @@ export function SwipeContainer({
       rootRef.current?.classList.add('is-dragging')
     }
 
-    const canLeft = canSwipeLeft ?? !!onSwipeLeft
-    const canRight = canSwipeRight ?? !!onSwipeRight
+    const { canLeft, canRight } = resolveCanSwipe()
     let deltaX = rawDeltaX
 
     // 境界外へのスワイプ(左画面がないのに右ドラッグ、または右画面がないのに左ドラッグ)はゴム状に減衰
@@ -132,6 +142,9 @@ export function SwipeContainer({
   }
 
   const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== activePointerId.current) return
+    activePointerId.current = null
+
     if (typeof e.currentTarget.releasePointerCapture === 'function') {
       try {
         e.currentTarget.releasePointerCapture(e.pointerId)
@@ -164,8 +177,7 @@ export function SwipeContainer({
       return
     }
 
-    const canLeft = canSwipeLeft ?? !!onSwipeLeft
-    const canRight = canSwipeRight ?? !!onSwipeRight
+    const { canLeft, canRight } = resolveCanSwipe()
 
     if (deltaX < -threshold && canLeft) {
       // 左スワイプ（画面を右から左へ払う）
@@ -177,6 +189,9 @@ export function SwipeContainer({
   }
 
   const handlePointerCancel = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== activePointerId.current) return
+    activePointerId.current = null
+
     if (typeof e.currentTarget.releasePointerCapture === 'function') {
       try {
         e.currentTarget.releasePointerCapture(e.pointerId)

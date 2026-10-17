@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは247/247全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）のフェーズA（必須3件）完了。
+テストは249/249全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）の全フェーズ（フェーズA・フェーズB）完了。
 
 ---
 
@@ -182,4 +182,18 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
   - `src/App.tsx`: `updateSelectedFolder` ヘルパーを新設し、state（`setSelectedFolder`）と `selectedFolderRef.current` を同期的・アトミックに同時更新。全6箇所の直接代入・state更新を統一。
   - テスト追加 (`src/App.test.tsx`): フォルダ選択直後にバックグラウンド同期が完了しても新フォルダのメモ一覧が正しく取得・表示される回帰テストを追加。
 - **結果:** テスト 247/247 全通過、ビルド成功。
+
+### フェーズB: 推奨修正4件(完了)
+- **B-1: マルチタッチ時にジェスチャー状態が混ざる問題の防止**
+  - `src/components/SwipeContainer.tsx`: `activePointerId` によるシングルタッチ制御を導入。最初の指のジェスチャーが完了するまで2本目以降の `pointerdown` を無視し、状態の混濁やオフセットの暴走を防止。
+  - テスト追加 (`src/components/SwipeContainer.test.tsx`): 複数指が同時に触れた際に後続の指が無視されるテストを追加。
+- **B-2: スワイプ画面遷移時の一瞬の二段アニメーション解消**
+  - `src/App.tsx`: `handleSwipeRight` で `await leaveEditor()` によるDB書き込み待ちを行わず、即座に画面遷移（`setMobileScreen('notes')`）を発火させるよう同期化。退避保存は非同期待ちなしでバックグラウンド実行。
+  - テスト追加 (`src/App.test.tsx`): `leaveEditor` が未完了でも即座に `mobile-notes` に切り替わるテストを追加。
+- **B-3: スワイプ可否判定ロジックの重複解消(DRY化)**
+  - `src/App.tsx`: `canSwipeLeftNow` / `canSwipeRightNow` を定義し、`handleSwipeLeft`/`handleSwipeRight` のガードと `SwipeContainer` への props 伝達で同一判定を共有。
+  - `src/components/SwipeContainer.tsx`: `resolveCanSwipe()` ヘルパーを新設し、`pointermove` と `pointerup` での `canLeft`/`canRight` 判定を一元化。
+- **B-4: will-change: transform のドラッグ中限定化**
+  - `src/App.css`: カラム要素の常時適用ルールから `will-change: transform` を削除し、`.columns.is-dragging` スコープ内にのみ適用することで不要な常時GPUメモリ確保を防止。
+- **結果:** テスト 249/249 全通過、ビルド成功。
 
