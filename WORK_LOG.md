@@ -306,3 +306,4 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
   - テスト拡充:
     - `src/components/SwipeContainer.test.tsx`: `lostpointercapture` によるオフセットリセット確認テスト、`className` 遷移時のオフセットリセット確認テストの2件を追加。
 - **結果:** テスト 269/269 全通過、ビルド成功。
+(その後コミット・デプロイ完了: `8c74bc0`、Actions Run `39019819979`、本番ライブ動作確認済み)
