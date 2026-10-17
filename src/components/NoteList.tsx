@@ -48,7 +48,7 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10).replace(/-/g, '/')
 }
 
-const LONG_PRESS_MS = 2000
+const LONG_PRESS_MS = 1500
 const MOVE_CANCEL_PX = 10
 
 export function NoteList({
@@ -120,8 +120,11 @@ export function NoteList({
     pointerStartRef.current = null
 
     if (longPressFiredRef.current) {
-      // 長押しで既に選択トグル済み。後続のclickイベント(発火する場合)は無視させる
-      longPressFiredRef.current = false
+      // 長押しで既に選択トグル済み。フラグのリセットはここでは行わず、
+      // handleRowClick側に委ねる(SwipeContainerがタップ成立時に手動でclickを
+      // 転送してくる経路があり、そちらが実際にこのフラグを消費するまで
+      // 真のままにしておく必要がある。ここで先に消すと、その手動clickの
+      // ガードが効かず選択が二重トグルされてしまう)。
       return
     }
     if (!start) return

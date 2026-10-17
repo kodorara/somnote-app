@@ -85,7 +85,7 @@ describe('NoteList', () => {
     const longPress = (el: Element, x = 100, y = 100) => {
       fireEvent.pointerDown(el, { clientX: x, clientY: y })
       act(() => {
-        vi.advanceTimersByTime(2000)
+        vi.advanceTimersByTime(1500)
       })
       fireEvent.pointerUp(el, { clientX: x, clientY: y })
     }
@@ -186,7 +186,7 @@ describe('NoteList', () => {
       const row = screen.getByText('先に書いたメモ')
       fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
       act(() => {
-        vi.advanceTimersByTime(200) // 閾値(2000ms)未満
+        vi.advanceTimersByTime(200) // 閾値(1500ms)未満
       })
       fireEvent.pointerUp(row, { clientX: 100, clientY: 100 })
       fireEvent.click(row)
@@ -201,7 +201,7 @@ describe('NoteList', () => {
       fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
       fireEvent.pointerMove(row, { clientX: 100, clientY: 140 }) // 40px上下移動 → スクロール扱い
       act(() => {
-        vi.advanceTimersByTime(2000)
+        vi.advanceTimersByTime(1500)
       })
       fireEvent.pointerUp(row, { clientX: 100, clientY: 140 })
 

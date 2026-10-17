@@ -29,7 +29,7 @@ function GripIcon() {
   )
 }
 
-const LONG_PRESS_MS = 2000
+const LONG_PRESS_MS = 1500
 const MOVE_CANCEL_PX = 10
 
 export function FolderList({
