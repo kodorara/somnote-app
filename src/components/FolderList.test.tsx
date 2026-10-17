@@ -57,7 +57,7 @@ describe('FolderList', () => {
     expect(screen.queryByLabelText('前ノートを削除')).not.toBeInTheDocument()
   })
 
-  it('calls onDelete when a folder row is long-pressed for 1000ms and confirmed', () => {
+  it('calls onDelete when a folder row is long-pressed for 2000ms and confirmed', () => {
     vi.useFakeTimers()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const onDelete = vi.fn()
@@ -66,14 +66,14 @@ describe('FolderList', () => {
     const folderBtn = screen.getByRole('button', { name: '仕事' })
     fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
 
-    // 999ms時点では発火しない
+    // 1999ms時点では発火しない
     act(() => {
-      vi.advanceTimersByTime(999)
+      vi.advanceTimersByTime(1999)
     })
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(onDelete).not.toHaveBeenCalled()
 
-    // 1000ms到達で確認ダイアログ発火
+    // 2000ms到達で確認ダイアログ発火
     act(() => {
       vi.advanceTimersByTime(1)
     })
@@ -93,7 +93,7 @@ describe('FolderList', () => {
     fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
 
     act(() => {
-      vi.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(2000)
     })
     expect(onDelete).not.toHaveBeenCalled()
 
@@ -111,7 +111,7 @@ describe('FolderList', () => {
     fireEvent.pointerMove(folderBtn, { clientX: 115, clientY: 100 }) // 15px移動 (>10px)
 
     act(() => {
-      vi.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(2000)
     })
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(onDelete).not.toHaveBeenCalled()

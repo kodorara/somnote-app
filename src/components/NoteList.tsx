@@ -48,7 +48,7 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10).replace(/-/g, '/')
 }
 
-const LONG_PRESS_MS = 500
+const LONG_PRESS_MS = 2000
 const MOVE_CANCEL_PX = 10
 
 export function NoteList({

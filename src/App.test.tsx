@@ -609,10 +609,10 @@ describe('bulk multi-select in the note list', () => {
   }
   // App全体のdoSync等(buildIndexAsyncの内部setTimeout(0)ヤマ等)が実時間の
   // setTimeoutに依存しているため、ここではfake timersを使わず、長押し閾値
-  // (500ms)を実際に待つ
+  // (2000ms)を実際に待つ
   const longPress = async (el: Element) => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-    await new Promise((resolve) => setTimeout(resolve, 550))
+    await new Promise((resolve) => setTimeout(resolve, 2050))
     fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
   }
 
@@ -1164,7 +1164,7 @@ describe('folder deletion and moving notes to trash', () => {
   }
   const longPress = async (el: Element) => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-    await new Promise((resolve) => setTimeout(resolve, 1050))
+    await new Promise((resolve) => setTimeout(resolve, 2050))
     fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
   }
 
@@ -1263,7 +1263,7 @@ describe('permanent delete in trash', () => {
   }
   const longPress = async (el: Element) => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-    await new Promise((resolve) => setTimeout(resolve, 550))
+    await new Promise((resolve) => setTimeout(resolve, 2050))
     fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
   }
 
