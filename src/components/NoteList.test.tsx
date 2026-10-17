@@ -180,6 +180,34 @@ describe('NoteList', () => {
       expect(onBulkDelete).not.toHaveBeenCalled()
     })
 
+    it('does not enter multi-select mode when the shared gesture lock is held at timer expiry (scroll in progress)', () => {
+      // 祖先のSwipeContainerがPointer Captureを保持している間、スクロール中でも
+      // このコンポーネント自身のonPointerMoveに移動イベントが届かず、
+      // clearLongPressTimerが呼ばれないことが実機で起きていた。発火の瞬間に
+      // 共有ロックを見て、スワイプ/スクロールが確定していれば取り消す。
+      const onSelect = vi.fn()
+      const gestureLockRef = { current: 'vertical' as const }
+      render(
+        <NoteList
+          {...defaultProps}
+          notes={notes}
+          onSelect={onSelect}
+          folders={folders}
+          gestureLockRef={gestureLockRef}
+        />,
+      )
+      const row = screen.getByText('先に書いたメモ')
+      fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
+      act(() => {
+        vi.advanceTimersByTime(1500)
+      })
+      // スクロールにより指が離れた位置がpointerdown時と大きくズレている
+      fireEvent.pointerUp(row, { clientX: 100, clientY: 160 })
+
+      expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
+      expect(onSelect).not.toHaveBeenCalled()
+    })
+
     it('does not enter multi-select mode on a quick tap (release before the long-press threshold)', () => {
       const onSelect = vi.fn()
       render(<NoteList {...defaultProps} notes={notes} onSelect={onSelect} folders={folders} />)

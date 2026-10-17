@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
+import type { GestureLockRef } from '../lib/gestureLock'
 import { TrashIcon, GearIcon } from './icons'
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
   trashCount?: number
   noteCounts?: Record<string, number>
   onOpenSettings?: () => void
+  gestureLockRef?: GestureLockRef
 }
 
 
@@ -29,7 +31,10 @@ function GripIcon() {
   )
 }
 
-const LONG_PRESS_MS = 1500
+// フォルダの削除はほとんど使われない操作であり、誤って確認ダイアログが出ると
+// 体験を大きく損ねる。メモの複数選択(LONG_PRESS_MS=1500、NoteList.tsx)より
+// さらに長く、はっきり意図した操作でなければ発火しないようにする。
+const LONG_PRESS_MS = 3000
 const MOVE_CANCEL_PX = 10
 
 export function FolderList({
@@ -42,6 +47,7 @@ export function FolderList({
   trashCount,
   noteCounts,
   onOpenSettings,
+  gestureLockRef,
 }: Props) {
   const [newName, setNewName] = useState('')
 
@@ -65,6 +71,12 @@ export function FolderList({
     longPressFiredRef.current = false
     clearLongPressTimer()
     longPressTimerRef.current = window.setTimeout(() => {
+      // 祖先のSwipeContainerがPointer Captureを保持している間、指の移動が
+      // このボタン自身のonPointerMoveに届かず、スクロール中でもclearLongPressTimer
+      // が呼ばれないことがある(実機のみで再現)。発火の瞬間に共有ロックを見て、
+      // 横スワイプ/縦スクロールが確定している最中であれば、意図しない操作として
+      // 発火を取り消す。
+      if (gestureLockRef && gestureLockRef.current !== 'none') return
       longPressFiredRef.current = true
       if (window.confirm(`「${folder.name}」を削除しますか？`)) {
         onDelete(folder)

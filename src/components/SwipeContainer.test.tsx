@@ -366,6 +366,31 @@ describe('SwipeContainer', () => {
     expect(container).not.toHaveClass('is-dragging')
   })
 
+  it('resets --drag-offset when the tab becomes hidden mid-gesture (notification/app switch interrupts the touch)', () => {
+    // 指を触れたままタブが非表示になると、OS/ブラウザがpointerup/pointercancelを
+    // 一切発火させないまま中断することがある。この場合--drag-offsetが固着し、
+    // 再び開いた時に内容が画面端からはみ出して表示される不具合になっていた。
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('60px')
+    expect(container).toHaveClass('is-dragging')
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  })
+
   it('does not reset gestureLockRef on release if locked by another gesture (vertical)', () => {
     const lockRef = { current: 'vertical' as const }
     render(

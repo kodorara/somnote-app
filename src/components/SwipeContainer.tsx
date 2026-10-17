@@ -60,19 +60,53 @@ export function SwipeContainer({
 
   const prevClassNameRef = useRef(className)
 
+  // ジェスチャー状態・CSS変数(--drag-offset)・Pointer Captureを全てリセットする。
+  // 画面遷移時のクリーンアップと、タブが非表示になった時(通知・他アプリへの
+  // 切り替え・画面ロック等)の安全策の両方から呼ばれる共通処理。
+  const resetGesture = () => {
+    if (activePointerId.current !== null && typeof rootRef.current?.releasePointerCapture === 'function') {
+      try {
+        rootRef.current.releasePointerCapture(activePointerId.current)
+      } catch {
+        // 既に失われている場合など
+      }
+    }
+    rootRef.current?.style.setProperty('--drag-offset', '0px')
+    rootRef.current?.classList.remove('is-dragging')
+    isDragging.current = false
+    isVerticalScroll.current = false
+    startPos.current = null
+    activePointerId.current = null
+    tapTargetRef.current = null
+    if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'
+  }
+
   // 画面遷移(className変更)時に、ドラッグ状態やCSS変数が残存しないよう確実にクリーンアップ
   useEffect(() => {
     if (prevClassNameRef.current !== className) {
       prevClassNameRef.current = className
-      rootRef.current?.style.setProperty('--drag-offset', '0px')
-      rootRef.current?.classList.remove('is-dragging')
-      isDragging.current = false
-      isVerticalScroll.current = false
-      startPos.current = null
-      activePointerId.current = null
-      tapTargetRef.current = null
+      resetGesture()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [className])
+
+  // 指を触れたままタブが非表示になる(通知を開く・他アプリに切り替える・画面ロック等)と、
+  // OSやブラウザがpointerup/pointercancelを一切発火させないまま中断することがある。
+  // この場合、--drag-offsetが指を離した時の値に固着し、再び画面を開いた時に
+  // 内容が画面端からはみ出して表示される不具合になる(実機でのみ再現し、
+  // タブを切り替えない通常の操作フローでは発生しないため見つけにくい)。
+  // タブが非表示になった時点で問答無用にジェスチャー状態をリセットすることで、
+  // 固着を防ぐ。
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        resetGesture()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const resolveCanSwipe = () => ({
     canLeft: canSwipeLeft ?? !!onSwipeLeft,

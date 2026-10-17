@@ -1165,7 +1165,7 @@ describe('folder deletion and moving notes to trash', () => {
   }
   const longPress = async (el: Element) => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-    await new Promise((resolve) => setTimeout(resolve, 1550))
+    await new Promise((resolve) => setTimeout(resolve, 3050))
     fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
   }
 

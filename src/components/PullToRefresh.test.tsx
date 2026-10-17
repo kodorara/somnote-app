@@ -14,6 +14,28 @@ describe('PullToRefresh', () => {
     expect(screen.queryByText('同期中...')).not.toBeInTheDocument()
   })
 
+  it('resets pullDistance when the tab becomes hidden mid-gesture (notification/app switch interrupts the touch)', () => {
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} threshold={40}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    fireEvent.pointerDown(container, { clientY: 100 })
+    fireEvent.pointerMove(container, { clientY: 140 })
+    expect(screen.getByText('引っ張って同期')).toBeInTheDocument()
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(screen.queryByText('引っ張って同期')).not.toBeInTheDocument()
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  })
+
   it('shows pulling indicators as dragged down and calls onRefresh on release beyond threshold', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
     render(

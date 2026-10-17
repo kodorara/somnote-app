@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
+import type { GestureLockRef } from '../lib/gestureLock'
 import { HighlightText } from './HighlightText'
 import { CheckIcon, FolderIcon, TrashIcon, CloseIcon } from './icons'
 
@@ -30,6 +31,7 @@ interface Props {
   onBulkMove?: (ids: string[], folderName: string) => void
   onBulkDelete?: (ids: string[]) => void
   onBulkPermanentDelete?: (ids: string[]) => void
+  gestureLockRef?: GestureLockRef
 }
 
 const SORTERS: Record<SortBy, (a: NoteSummary, b: NoteSummary) => number> = {
@@ -64,6 +66,7 @@ export function NoteList({
   onBulkMove,
   onBulkDelete,
   onBulkPermanentDelete,
+  gestureLockRef,
 }: Props) {
   const visible = isTrash ? notes.filter((n) => n.deleted) : notes.filter((n) => !n.deleted)
   const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
@@ -101,6 +104,11 @@ export function NoteList({
     longPressFiredRef.current = false
     clearLongPressTimer()
     longPressTimerRef.current = window.setTimeout(() => {
+      // 祖先のSwipeContainerがPointer Captureを保持している間はスクロール中でも
+      // このボタン自身のonPointerMoveに移動イベントが届かないことがある(実機のみ
+      // 再現)。発火の瞬間に共有ロックを見て、横スワイプ/縦スクロールが確定している
+      // 最中であれば、意図しない操作として発火を取り消す。
+      if (gestureLockRef && gestureLockRef.current !== 'none') return
       longPressFiredRef.current = true
       toggleSelected(id)
     }, LONG_PRESS_MS)

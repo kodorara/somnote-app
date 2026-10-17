@@ -57,7 +57,7 @@ describe('FolderList', () => {
     expect(screen.queryByLabelText('前ノートを削除')).not.toBeInTheDocument()
   })
 
-  it('calls onDelete when a folder row is long-pressed for 1500ms and confirmed', () => {
+  it('calls onDelete when a folder row is long-pressed for 3000ms and confirmed', () => {
     vi.useFakeTimers()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const onDelete = vi.fn()
@@ -66,14 +66,14 @@ describe('FolderList', () => {
     const folderBtn = screen.getByRole('button', { name: '仕事' })
     fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
 
-    // 1499ms時点では発火しない
+    // 2999ms時点では発火しない
     act(() => {
-      vi.advanceTimersByTime(1499)
+      vi.advanceTimersByTime(2999)
     })
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(onDelete).not.toHaveBeenCalled()
 
-    // 1500ms到達で確認ダイアログ発火
+    // 3000ms到達で確認ダイアログ発火
     act(() => {
       vi.advanceTimersByTime(1)
     })
@@ -93,7 +93,7 @@ describe('FolderList', () => {
     fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
 
     act(() => {
-      vi.advanceTimersByTime(1500)
+      vi.advanceTimersByTime(3000)
     })
     expect(onDelete).not.toHaveBeenCalled()
 
@@ -111,8 +111,31 @@ describe('FolderList', () => {
     fireEvent.pointerMove(folderBtn, { clientX: 115, clientY: 100 }) // 15px移動 (>10px)
 
     act(() => {
-      vi.advanceTimersByTime(1500)
+      vi.advanceTimersByTime(3000)
     })
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(onDelete).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it('does not fire the delete confirmation when the shared gesture lock is held at timer expiry (scroll in progress)', () => {
+    // 祖先のSwipeContainerがPointer Captureを保持している間、スクロール中でも
+    // このコンポーネント自身のonPointerMoveに移動イベントが届かず、
+    // clearLongPressTimerが呼ばれないことが実機で起きていた。発火の瞬間に
+    // 共有ロックを見て、スワイプ/スクロールが確定していれば取り消す。
+    vi.useFakeTimers()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onDelete = vi.fn()
+    const gestureLockRef = { current: 'vertical' as const }
+    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} gestureLockRef={gestureLockRef} />)
+
+    const folderBtn = screen.getByRole('button', { name: '仕事' })
+    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(onDelete).not.toHaveBeenCalled()
 

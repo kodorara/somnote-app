@@ -855,6 +855,7 @@ export default function App() {
               onDelete={handleDeleteFolder}
               onReorder={handleReorderFolders}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              gestureLockRef={gestureLockRef}
             />
 
           </div>
@@ -900,6 +901,7 @@ export default function App() {
               onBulkMove={bulkMoveNotes}
               onBulkDelete={bulkDeleteNotes}
               onBulkPermanentDelete={bulkPermanentlyDeleteNotes}
+              gestureLockRef={gestureLockRef}
               onSelect={async (id) => {
                 await leaveEditor()
                 const n = await db.notes.get(id)

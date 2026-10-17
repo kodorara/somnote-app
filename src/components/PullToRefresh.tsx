@@ -1,4 +1,4 @@
-import { useState, useRef, type PointerEvent, type ReactNode } from 'react'
+import { useState, useRef, useEffect, type PointerEvent, type ReactNode } from 'react'
 import type { GestureLockRef } from '../lib/gestureLock'
 import { RefreshIcon } from './icons'
 
@@ -87,6 +87,24 @@ export function PullToRefresh({
     setPullDistance(0)
     if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
   }
+
+  // 指を触れたままタブが非表示になる(通知を開く・他アプリへの切り替え・画面ロック等)と、
+  // pointerup/pointercancelが発火しないまま中断され、引っ張りインジケータが表示されたまま
+  // 固着することがある(SwipeContainer側の--drag-offset固着と同種の問題)。
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        isPulling.current = false
+        startY.current = null
+        startX.current = null
+        setPullDistance(0)
+        if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const showIndicator = pullDistance > 0 || isRefreshing
   const reached = pullDistance >= threshold
