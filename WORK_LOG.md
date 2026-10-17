@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは243/243全通過。ビルド正常。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）のフェーズ1・フェーズ2完了。
+テストは243/243全通過。ビルド正常（react-markdownチャンク分離確認済み）。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）のフェーズ1・フェーズ2・フェーズ3完了。
 
 ---
 
@@ -146,4 +146,17 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `pointercancel` 時のオフセット初期化テスト。
     - 境界外ドラッグ時の減衰（0.2倍）テスト。
   - テスト 243/243 全通過、ビルド成功、コミット（`497721f`）、GitHub Actions デプロイ完了（Run `38931631088`）、本番ライブ確認完了。
+
+### フェーズ3: react-markdownの遅延ロード(完了)
+- **課題:** `Editor.tsx` で `react-markdown` を静的importしていたため、プレビュー機能を使わない場合でも初期JSバンドル（約595kB）に含まれ、解析・評価コストが初期ロードを遅延させていた（Viteの500kBチャンクサイズ警告も発生）。
+- **対応:**
+  - `src/components/Editor.tsx`:
+    - `react-markdown` を `React.lazy(() => import('react-markdown'))` による動的インポートに変更。
+    - プレビュー表示部分を `<Suspense fallback={null}>` でラップ。
+  - テスト更新 (`src/components/Editor.test.tsx`, `src/App.test.tsx`):
+    - `lazy` による動的インポートが非同期に解決されるため、Markdownプレビュー表示の検証アサーションを `findBy*` および `waitFor` に更新。
+  - 結果:
+    - メインJSチャンクが 595kB → 478.36kB に縮小（500kB警告解消）。
+    - `react-markdown`（約117kB）がプレビュー切り替え時のみ読み込まれる別チャンクに分離。
+    - テスト 243/243 全通過、ビルド成功、コミット（`5da1e5d`）、GitHub Actions デプロイ完了（Run `38932472066`）。
 
