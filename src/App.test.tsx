@@ -1163,11 +1163,6 @@ describe('folder deletion and moving notes to trash', () => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
     fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
   }
-  const longPress = async (el: Element) => {
-    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-    await new Promise((resolve) => setTimeout(resolve, 3050))
-    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
-  }
 
   it('moves notes in deleted folder to trash and shows them in trash view', async () => {
     localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
@@ -1200,9 +1195,15 @@ describe('folder deletion and moving notes to trash', () => {
     swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
 
-    // 「仕事」フォルダ行を長押し
+    // 「仕事」フォルダを選択し、フォルダ一覧へ戻って「フォルダ削除」ボタンを押す
     const folderBtn = await screen.findByRole('button', { name: '仕事' })
-    await longPress(folderBtn)
+    fireEvent.click(folderBtn)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    const deleteFolderBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
+    fireEvent.click(deleteFolderBtn)
 
     // 確認ダイアログが呼ばれたこと
     expect(confirmSpy).toHaveBeenCalled()
@@ -1243,7 +1244,13 @@ describe('folder deletion and moving notes to trash', () => {
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
 
     const folderBtn = await screen.findByRole('button', { name: '空フォルダ' })
-    await longPress(folderBtn)
+    fireEvent.click(folderBtn)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    const deleteFolderBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
+    fireEvent.click(deleteFolderBtn)
 
     // FolderListの「削除しますか？」は呼ばれるが、メモを含む警告文「含まれる」は呼ばれないこと
     expect(confirmSpy).toHaveBeenCalledWith('「空フォルダ」を削除しますか？')
@@ -1253,6 +1260,28 @@ describe('folder deletion and moving notes to trash', () => {
     await waitFor(async () => {
       const folder = await db.folders.get('f-empty')
       expect(folder).toBeUndefined()
+    })
+  })
+
+  it('triggers sync when the footer sync button is clicked in folder list', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    const getTreeSpy = vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    getTreeSpy.mockClear()
+    const syncBtn = screen.getByRole('button', { name: '同期' })
+    fireEvent.click(syncBtn)
+
+    await waitFor(() => {
+      expect(getTreeSpy).toHaveBeenCalled()
     })
   })
 })

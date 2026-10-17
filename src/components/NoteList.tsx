@@ -88,14 +88,19 @@ export function NoteList({
     }
   }
 
-  // ネイティブスクロールは(祖先がPointer Captureを保持している間は特に)このボタン
-  // 自身のonPointerMoveを経由しないことがあるため、windowのscrollイベント(バブリング
-  // しないのでcaptureフェーズで拾う)を監視し、スクロールが起きたら問答無用で長押し
-  // タイマーを破棄する。gestureLockRefのチェック(タイマー発火時点)と二重の安全策。
+  // ネイティブスクロールや指離しは(祖先がPointer Captureを保持している間は特に)
+  // このボタン自身のonPointerMove/onPointerUpを経由しないため、windowのscroll/
+  // pointerup/pointercancelイベントをcaptureフェーズで監視し、確実に長押しタイマーを破棄する。
   useEffect(() => {
-    const handleScroll = () => clearLongPressTimer()
-    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-    return () => window.removeEventListener('scroll', handleScroll, true)
+    const cancelTimer = () => clearLongPressTimer()
+    window.addEventListener('scroll', cancelTimer, { capture: true, passive: true })
+    window.addEventListener('pointerup', cancelTimer, { capture: true, passive: true })
+    window.addEventListener('pointercancel', cancelTimer, { capture: true, passive: true })
+    return () => {
+      window.removeEventListener('scroll', cancelTimer, true)
+      window.removeEventListener('pointerup', cancelTimer, true)
+      window.removeEventListener('pointercancel', cancelTimer, true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

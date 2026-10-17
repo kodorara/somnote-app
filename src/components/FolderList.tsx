@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
 import type { GestureLockRef } from '../lib/gestureLock'
-import { TrashIcon, GearIcon } from './icons'
+import { TrashIcon, GearIcon, RefreshIcon } from './icons'
 
 interface Props {
   folders: StoredFolder[]
@@ -14,6 +14,9 @@ interface Props {
   trashCount?: number
   noteCounts?: Record<string, number>
   onOpenSettings?: () => void
+  onSync?: () => void
+  isSyncing?: boolean
+  online?: boolean
   gestureLockRef?: GestureLockRef
 }
 
@@ -31,12 +34,6 @@ function GripIcon() {
   )
 }
 
-// フォルダの削除はほとんど使われない操作であり、誤って確認ダイアログが出ると
-// 体験を大きく損ねる。メモの複数選択(LONG_PRESS_MS=1500、NoteList.tsx)より
-// さらに長く、はっきり意図した操作でなければ発火しないようにする。
-const LONG_PRESS_MS = 3000
-const MOVE_CANCEL_PX = 10
-
 export function FolderList({
   folders,
   selectedName,
@@ -47,7 +44,9 @@ export function FolderList({
   trashCount,
   noteCounts,
   onOpenSettings,
-  gestureLockRef,
+  onSync,
+  isSyncing = false,
+  online = true,
 }: Props) {
   const [newName, setNewName] = useState('')
 
@@ -55,62 +54,15 @@ export function FolderList({
   const draggingId = useRef<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
 
-  const longPressTimerRef = useRef<number | null>(null)
-  const longPressFiredRef = useRef(false)
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const selectedFolder = folders.find((f) => f.name === selectedName) ?? null
 
-  const clearLongPressTimer = () => {
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
+  const handleDeleteSelectedFolder = () => {
+    if (!selectedFolder) return
+    if (window.confirm(`「${selectedFolder.name}」を削除しますか？`)) {
+      onDelete(selectedFolder)
     }
   }
 
-  // ネイティブスクロールは(祖先がPointer Captureを保持している間は特に)このボタン
-  // 自身のonPointerMoveを経由しないことがあるため、windowのscrollイベント(バブリング
-  // しないのでcaptureフェーズで拾う)を監視し、スクロールが起きたら問答無用で長押し
-  // タイマーを破棄する。gestureLockRefのチェック(タイマー発火時点)と二重の安全策。
-  useEffect(() => {
-    const handleScroll = () => clearLongPressTimer()
-    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-    return () => window.removeEventListener('scroll', handleScroll, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const handleRowPointerDown = (e: ReactPointerEvent<HTMLButtonElement>, folder: StoredFolder) => {
-    pointerStartRef.current = { x: e.clientX, y: e.clientY }
-    longPressFiredRef.current = false
-    clearLongPressTimer()
-    longPressTimerRef.current = window.setTimeout(() => {
-      // 祖先のSwipeContainerがPointer Captureを保持している間、指の移動が
-      // このボタン自身のonPointerMoveに届かず、スクロール中でもclearLongPressTimer
-      // が呼ばれないことがある(実機のみで再現)。発火の瞬間に共有ロックを見て、
-      // 横スワイプ/縦スクロールが確定している最中であれば、意図しない操作として
-      // 発火を取り消す。
-      if (gestureLockRef && gestureLockRef.current !== 'none') return
-      longPressFiredRef.current = true
-      if (window.confirm(`「${folder.name}」を削除しますか？`)) {
-        onDelete(folder)
-      }
-    }, LONG_PRESS_MS)
-  }
-
-  const handleRowPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!pointerStartRef.current) return
-    const dx = e.clientX - pointerStartRef.current.x
-    const dy = e.clientY - pointerStartRef.current.y
-    if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clearLongPressTimer()
-  }
-
-  const handleRowPointerUp = () => clearLongPressTimer()
-
-  const handleRowClick = (folder: StoredFolder) => {
-    if (longPressFiredRef.current) {
-      longPressFiredRef.current = false
-      return
-    }
-    onSelect(folder.name)
-  }
 
   const byId = new Map(folders.map((f) => [f.folderId, f]))
   const baseOrder = sortedBySeq(folders).map((f) => f.folderId)
@@ -198,12 +150,7 @@ export function FolderList({
                 type="button"
                 className="folder-select-btn"
                 aria-current={f.name === selectedName}
-                onPointerDown={(e) => handleRowPointerDown(e, f)}
-                onPointerMove={handleRowPointerMove}
-                onPointerUp={handleRowPointerUp}
-                onPointerCancel={handleRowPointerUp}
-                onClick={() => handleRowClick(f)}
-                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => onSelect(f.name)}
               >
                 <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 <span className="folder-name">{f.name}</span>
@@ -249,8 +196,8 @@ export function FolderList({
         </button>
       </div>
 
-      {onOpenSettings && (
-        <div className="folder-settings-wrap">
+      <div className="folder-settings-wrap">
+        {onOpenSettings && (
           <button
             type="button"
             className="folder-settings-btn"
@@ -260,9 +207,32 @@ export function FolderList({
             <GearIcon size={16} />
             <span>設定</span>
           </button>
-        </div>
-      )}
+        )}
+        {onSync && (
+          <button
+            type="button"
+            className="folder-settings-btn"
+            aria-label="同期"
+            disabled={!online || isSyncing}
+            onClick={onSync}
+          >
+            <RefreshIcon size={16} className={isSyncing ? 'pull-refresh-icon is-spinning' : undefined} />
+            <span>{isSyncing ? '同期中...' : '同期'}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="folder-settings-btn folder-delete-selected-btn"
+          aria-label="選択中のフォルダを削除"
+          disabled={!selectedFolder}
+          onClick={handleDeleteSelectedFolder}
+        >
+          <TrashIcon size={16} />
+          <span>フォルダ削除</span>
+        </button>
+      </div>
     </div>
   )
 }
+
 

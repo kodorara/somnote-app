@@ -435,3 +435,19 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 4. **[Low] `window.blur`での固着リセット補強:** `visibilitychange`に加え`blur`イベントでも同様のリセットを行うようにした。
 
 回帰テストを4件追加(`PullToRefresh.test.tsx`×2、`NoteList.test.tsx`×1、`SwipeContainer.test.tsx`×2)。全291テスト通過・ビルド成功・デプロイ完了。
+
+---
+
+## 11. フォルダ削除および同期のフッターボタン化(2026-10-18、Antigravity担当)
+
+ユーザー実機確認の結果、以下の2点の要望を受け、ジェスチャー競合を根絶するためフォルダ一覧下部の「設定」ボタンと同じ列に明示的なボタンとして配置する方式に変更した。
+
+1. **フォルダ長押し削除の廃止と「フォルダ削除」ボタンの設置 (`FolderList.tsx`, `App.css`):**
+   - **背景:** `SwipeContainer`が`pointerdown`で即座に`setPointerCapture`を取得するため、指を離した時の`pointerup`が子要素の`<button>`に届かず、短いタップや横スワイプ後でも`setTimeout`が生き残って3秒後に誤発火するケースがあった。
+   - **対応:** `FolderList.tsx`から行ごとの長押し削除タイマー・ポインタハンドラを完全に撤廃し、下部の`.folder-settings-wrap`（設定ボタンの横）に「フォルダ削除」ボタン(`aria-label="選択中のフォルダを削除"`)を設置。選択中の通常フォルダがある時のみ有効化され、クリック時に確認ダイアログを経て`onDelete`を実行する。
+   - あわせて、`NoteList.tsx`の複数選択用長押しタイマーでも同様に祖先がPointer Captureを保持している間に指を離すとタイマーが残留しうる問題を防止するため、`window`の`pointerup`/`pointercancel`(captureフェーズ)でもタイマーを破棄するよう補強した。
+2. **「同期」ボタンの設置 (`FolderList.tsx`, `App.tsx`, `App.css`):**
+   - **背景:** `.columns`への`touch-action: pan-y`追加により、Android Chromeのコンポジタが縦ドラッグ開始(約8px)でネイティブスクロールを開始して`pointercancel`を発火させるため、実機でプルトゥリフレッシュが成立しなくなっていた。
+   - **対応:** 重要度の低いジェスチャー操作に固執せず、フォルダ一覧下部の`.folder-settings-wrap`（「設定」「フォルダ削除」と同じ列）に「同期」ボタン(`aria-label="同期"`)を横並びで設置。`App.tsx`から`onSync={handlePullToRefresh}`・`isSyncing`・`online`を渡し、オフライン時や同期中は無効化(`同期中...`表示)するようにした。
+
+ユニットテスト・結合テストを更新(`FolderList.test.tsx`、`NoteList.test.tsx`、`App.test.tsx`)し、全292テスト通過・ビルド成功を確認。

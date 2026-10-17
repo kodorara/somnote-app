@@ -51,13 +51,13 @@ describe('FolderList', () => {
     expect(onCreate).toHaveBeenCalledWith('Enterで追加')
   })
 
-  it('does not render delete buttons', () => {
+  it('does not render per-row delete buttons', () => {
     render(<FolderList {...baseProps} folders={folders} />)
     expect(screen.queryByLabelText('仕事を削除')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('前ノートを削除')).not.toBeInTheDocument()
   })
 
-  it('calls onDelete when a folder row is long-pressed for 3000ms and confirmed', () => {
+  it('does not trigger folder deletion on long-press of a folder row', () => {
     vi.useFakeTimers()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const onDelete = vi.fn()
@@ -65,123 +65,63 @@ describe('FolderList', () => {
 
     const folderBtn = screen.getByRole('button', { name: '仕事' })
     fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-
-    // 2999ms時点では発火しない
     act(() => {
-      vi.advanceTimersByTime(2999)
+      vi.advanceTimersByTime(5000)
     })
+
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(onDelete).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
 
-    // 3000ms到達で確認ダイアログ発火
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
+  it('disables the footer delete folder button when no folder or trash is selected', () => {
+    const { rerender } = render(<FolderList {...baseProps} folders={folders} selectedName={null} />)
+    expect(screen.getByRole('button', { name: '選択中のフォルダを削除' })).toBeDisabled()
+
+    rerender(<FolderList {...baseProps} folders={folders} selectedName="ゴミ箱" />)
+    expect(screen.getByRole('button', { name: '選択中のフォルダを削除' })).toBeDisabled()
+  })
+
+  it('calls onDelete when the footer delete folder button is clicked and confirmed', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onDelete = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} selectedName="仕事" onDelete={onDelete} />)
+
+    const deleteBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
+    expect(deleteBtn).not.toBeDisabled()
+    fireEvent.click(deleteBtn)
+
     expect(confirmSpy).toHaveBeenCalledWith('「仕事」を削除しますか？')
     expect(onDelete).toHaveBeenCalledWith(folders[1])
-
-    vi.useRealTimers()
   })
 
-  it('does not call onDelete when long-press confirmation is cancelled', () => {
-    vi.useFakeTimers()
+  it('does not call onDelete when footer delete folder confirmation is cancelled', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
+    render(<FolderList {...baseProps} folders={folders} selectedName="仕事" onDelete={onDelete} />)
 
-    const folderBtn = screen.getByRole('button', { name: '仕事' })
-    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-
-    act(() => {
-      vi.advanceTimersByTime(3000)
-    })
+    fireEvent.click(screen.getByRole('button', { name: '選択中のフォルダを削除' }))
     expect(onDelete).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
   })
 
-  it('cancels long-press when pointer moves more than 10px', () => {
-    vi.useFakeTimers()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
+  it('renders sync button in footer and handles click and disabled states', () => {
+    const onSync = vi.fn()
+    const { rerender } = render(
+      <FolderList {...baseProps} folders={folders} onSync={onSync} online={true} isSyncing={false} />,
+    )
 
-    const folderBtn = screen.getByRole('button', { name: '仕事' })
-    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-    fireEvent.pointerMove(folderBtn, { clientX: 115, clientY: 100 }) // 15px移動 (>10px)
+    const syncBtn = screen.getByRole('button', { name: '同期' })
+    expect(syncBtn).not.toBeDisabled()
+    expect(syncBtn).toHaveTextContent('同期')
+    fireEvent.click(syncBtn)
+    expect(onSync).toHaveBeenCalledTimes(1)
 
-    act(() => {
-      vi.advanceTimersByTime(3000)
-    })
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(onDelete).not.toHaveBeenCalled()
+    rerender(<FolderList {...baseProps} folders={folders} onSync={onSync} online={true} isSyncing={true} />)
+    expect(screen.getByRole('button', { name: '同期' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '同期' })).toHaveTextContent('同期中...')
 
-    vi.useRealTimers()
-  })
-
-  it('does not fire the delete confirmation when the shared gesture lock is held at timer expiry (scroll in progress)', () => {
-    // 祖先のSwipeContainerがPointer Captureを保持している間、スクロール中でも
-    // このコンポーネント自身のonPointerMoveに移動イベントが届かず、
-    // clearLongPressTimerが呼ばれないことが実機で起きていた。発火の瞬間に
-    // 共有ロックを見て、スワイプ/スクロールが確定していれば取り消す。
-    vi.useFakeTimers()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onDelete = vi.fn()
-    const gestureLockRef = { current: 'vertical' as const }
-    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} gestureLockRef={gestureLockRef} />)
-
-    const folderBtn = screen.getByRole('button', { name: '仕事' })
-    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-    act(() => {
-      vi.advanceTimersByTime(3000)
-    })
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(onDelete).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
-  })
-
-  it('cancels a pending long-press timer when a window scroll event fires (ancestor holds pointer capture so onPointerMove may not)', () => {
-    vi.useFakeTimers()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
-
-    const folderBtn = screen.getByRole('button', { name: '仕事' })
-    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-
-    window.dispatchEvent(new Event('scroll'))
-
-    act(() => {
-      vi.advanceTimersByTime(3000)
-    })
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(onDelete).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
-  })
-
-  it('selects folder on short tap without triggering long-press', () => {
-    vi.useFakeTimers()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const onSelect = vi.fn()
-    const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} onSelect={onSelect} onDelete={onDelete} />)
-
-    const folderBtn = screen.getByRole('button', { name: '仕事' })
-    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
-    act(() => {
-      vi.advanceTimersByTime(100) // 100msで指を離す
-    })
-    fireEvent.pointerUp(folderBtn)
-    fireEvent.click(folderBtn)
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(onDelete).not.toHaveBeenCalled()
-    expect(onSelect).toHaveBeenCalledWith('仕事')
-
-    vi.useRealTimers()
+    rerender(<FolderList {...baseProps} folders={folders} onSync={onSync} online={false} isSyncing={false} />)
+    expect(screen.getByRole('button', { name: '同期' })).toBeDisabled()
   })
 
   it('reorders via drag: dragging the first row past the second row\'s midpoint calls onReorder with the new order', () => {

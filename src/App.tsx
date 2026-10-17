@@ -855,8 +855,12 @@ export default function App() {
               onDelete={handleDeleteFolder}
               onReorder={handleReorderFolders}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              onSync={handlePullToRefresh}
+              isSyncing={isSyncing}
+              online={online}
               gestureLockRef={gestureLockRef}
             />
+
 
           </div>
 
