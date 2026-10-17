@@ -19,10 +19,6 @@ export async function createFolder(name: string, existingFolders: StoredFolder[]
 }
 
 export async function deleteFolder(folder: StoredFolder): Promise<void> {
-  const count = await db.notes.where('folder').equals(folder.name).count()
-  if (count > 0) {
-    throw new Error(`「${folder.name}」には${count}件のメモがあるため削除できません`)
-  }
   await db.folders.delete(folder.folderId)
 }
 

@@ -508,35 +508,6 @@ describe('folder management', () => {
     const sentFolders = JSON.parse(putContentSpy.mock.calls[0][3] as string)
     expect(sentFolders.some((f: { name: string }) => f.name === '趣味')).toBe(true)
   })
-
-  it('refuses to delete a non-empty folder and shows the reason', async () => {
-    const swipeRight = (el: Element) => {
-      fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
-      fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
-    }
-
-    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
-    await db.notes.put({
-      id: 'n1', title: 'タイトル', folder: '前ノート', seq: 0, tags: [],
-      createdAt: '2026-01-01T00:00:00+09:00', updatedAt: '2026-01-01T00:00:00+09:00',
-      deleted: false, llmLinks: [], body: '本文', baseSha: 'sha1', dirty: false,
-    })
-    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
-      tree: [{ path: 'notes/前ノート/n1.md', sha: 'sha1' }], truncated: false,
-    })
-    render(<App />)
-    await screen.findByRole('textbox', { name: '本文' })
-
-    const swipeContainer = screen.getByTestId('swipe-container')
-    swipeRight(swipeContainer)
-    swipeRight(swipeContainer)
-    await screen.findByLabelText('前ノートを削除')
-
-    fireEvent.click(screen.getByLabelText('前ノートを削除'))
-
-    expect(await screen.findByText(/削除できません/)).toBeInTheDocument()
-    expect(await db.folders.get('1')).toBeTruthy()
-  })
 })
 
 describe('moving a note to a different folder', () => {
@@ -1186,6 +1157,101 @@ describe('settings modal and backup integration', () => {
   })
 })
 
+describe('folder deletion and moving notes to trash', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+  const longPress = async (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
+  }
 
+  it('moves notes in deleted folder to trash and shows them in trash view', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: 'f-work', name: '仕事', color: '#ff0000', seq: 1 })
+    await db.notes.put({
+      id: 'work-note-1',
+      title: '仕事用メモ',
+      folder: '仕事',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: false,
+      llmLinks: [],
+      body: '仕事メモの本文',
+      baseSha: null,
+      dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
 
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
 
+    const swipeContainer = screen.getByTestId('swipe-container')
+    // editor -> notes
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    // notes -> folders
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    // 「仕事」フォルダ行を長押し
+    const folderBtn = await screen.findByRole('button', { name: '仕事' })
+    await longPress(folderBtn)
+
+    // 確認ダイアログが呼ばれたこと
+    expect(confirmSpy).toHaveBeenCalled()
+
+    // フォルダがDBから削除され、メモはdeleted: trueになること
+    await waitFor(async () => {
+      const folder = await db.folders.get('f-work')
+      expect(folder).toBeUndefined()
+      const note = await db.notes.get('work-note-1')
+      expect(note?.deleted).toBe(true)
+      expect(note?.dirty).toBe(true)
+    })
+
+    // ゴミ箱にバッジ(1)が表示されていること
+    const trashBtn = await screen.findByRole('button', { name: 'ゴミ箱 (1)' })
+    expect(trashBtn).toBeInTheDocument()
+
+    // ゴミ箱を開くと、元フォルダ名「[仕事]」付きでメモが表示されていること
+    fireEvent.click(trashBtn)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    expect(await screen.findByText('仕事用メモ')).toBeInTheDocument()
+    expect(screen.getByText(/\[仕事\]/)).toBeInTheDocument()
+  })
+
+  it('deletes empty folder without note warning dialog', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.folders.put({ folderId: 'f-empty', name: '空フォルダ', color: '#00ff00', seq: 1 })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    const folderBtn = await screen.findByRole('button', { name: '空フォルダ' })
+    await longPress(folderBtn)
+
+    // FolderListの「削除しますか？」は呼ばれるが、メモを含む警告文「含まれる」は呼ばれないこと
+    expect(confirmSpy).toHaveBeenCalledWith('「空フォルダ」を削除しますか？')
+    const noteWarningCall = confirmSpy.mock.calls.find((call) => typeof call[0] === 'string' && call[0].includes('含まれる'))
+    expect(noteWarningCall).toBeUndefined()
+
+    await waitFor(async () => {
+      const folder = await db.folders.get('f-empty')
+      expect(folder).toBeUndefined()
+    })
+  })
+})

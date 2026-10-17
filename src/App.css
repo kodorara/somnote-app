@@ -161,16 +161,6 @@
   color: var(--color-text-muted);
   margin-left: var(--space-2);
 }
-.folder-delete-btn {
-  flex: none;
-  width: 36px;
-  background: transparent;
-  border: 0;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 17px;
-}
-.folder-delete-btn:hover { color: var(--color-accent-400); }
 .folder-create-form {
   display: flex;
   gap: var(--space-2);

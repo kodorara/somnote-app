@@ -39,7 +39,7 @@ describe('deleteFolder', () => {
     expect(await db.folders.get('1')).toBeUndefined()
   })
 
-  it('refuses to delete a folder that still has notes, with a count in the error message', async () => {
+  it('deletes a folder even if it still has notes in it', async () => {
     const folder = { folderId: '1', name: '仕事', color: '#000', seq: 0 }
     await db.folders.add(folder)
     await db.notes.put({
@@ -48,8 +48,8 @@ describe('deleteFolder', () => {
       baseSha: null, dirty: false,
     })
 
-    await expect(deleteFolder(folder)).rejects.toThrow('1件のメモがあるため削除できません')
-    expect(await db.folders.get('1')).toEqual(folder)
+    await deleteFolder(folder)
+    expect(await db.folders.get('1')).toBeUndefined()
   })
 })
 

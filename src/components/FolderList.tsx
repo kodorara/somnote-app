@@ -29,6 +29,9 @@ function GripIcon() {
   )
 }
 
+const LONG_PRESS_MS = 500
+const MOVE_CANCEL_PX = 10
+
 export function FolderList({
   folders,
   selectedName,
@@ -45,6 +48,46 @@ export function FolderList({
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const draggingId = useRef<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
+
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressFiredRef = useRef(false)
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  const handleRowPointerDown = (e: ReactPointerEvent<HTMLButtonElement>, folder: StoredFolder) => {
+    pointerStartRef.current = { x: e.clientX, y: e.clientY }
+    longPressFiredRef.current = false
+    clearLongPressTimer()
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true
+      if (window.confirm(`「${folder.name}」を削除しますか？`)) {
+        onDelete(folder)
+      }
+    }, LONG_PRESS_MS)
+  }
+
+  const handleRowPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!pointerStartRef.current) return
+    const dx = e.clientX - pointerStartRef.current.x
+    const dy = e.clientY - pointerStartRef.current.y
+    if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clearLongPressTimer()
+  }
+
+  const handleRowPointerUp = () => clearLongPressTimer()
+
+  const handleRowClick = (folder: StoredFolder) => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      return
+    }
+    onSelect(folder.name)
+  }
 
   const byId = new Map(folders.map((f) => [f.folderId, f]))
   const baseOrder = sortedBySeq(folders).map((f) => f.folderId)
@@ -132,7 +175,11 @@ export function FolderList({
                 type="button"
                 className="folder-select-btn"
                 aria-current={f.name === selectedName}
-                onClick={() => onSelect(f.name)}
+                onPointerDown={(e) => handleRowPointerDown(e, f)}
+                onPointerMove={handleRowPointerMove}
+                onPointerUp={handleRowPointerUp}
+                onPointerCancel={handleRowPointerUp}
+                onClick={() => handleRowClick(f)}
               >
                 <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 <span className="folder-name">{f.name}</span>
@@ -141,14 +188,6 @@ export function FolderList({
                     {noteCounts[f.name]}
                   </span>
                 )}
-              </button>
-              <button
-                type="button"
-                className="folder-delete-btn"
-                aria-label={`${f.name}を削除`}
-                onClick={() => onDelete(f)}
-              >
-                ×
               </button>
             </li>
           )

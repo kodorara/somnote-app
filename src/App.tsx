@@ -561,7 +561,20 @@ export default function App() {
 
   const handleDeleteFolder = async (folder: StoredFolder) => {
     setFolderError(null)
+    const notesInFolder = await db.notes.where('folder').equals(folder.name).toArray()
+    const activeCount = notesInFolder.filter((n) => !n.deleted).length
+
+    if (activeCount > 0) {
+      const confirmed = window.confirm(
+        `「${folder.name}」を削除しますか？含まれる${activeCount}件のメモはゴミ箱に移動されます。`,
+      )
+      if (!confirmed) return
+    }
+
     resetSearch()
+    if (activeCount > 0) {
+      await bulkDeleteNotes(notesInFolder.filter((n) => !n.deleted).map((n) => n.id))
+    }
     try {
       await deleteFolder(folder)
     } catch (err) {
