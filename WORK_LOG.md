@@ -355,3 +355,4 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/components/PullToRefresh.test.tsx`:
       - 他者がロック（`'horizontal'`）を保持している場合に `PullToRefresh` のリリース操作でロックが消されないことを検証するテストを追加。
 - **結果:** テスト 274/274 全通過、ビルド成功。
+(その後コミット・デプロイ完了: `de3c94d`、Actions Run `39023695591`、本番ライブ動作確認済み)
