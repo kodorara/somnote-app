@@ -36,6 +36,45 @@ describe('PullToRefresh', () => {
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
   })
 
+  it('does not deadlock gestureLockRef at "vertical" when isPulling never started (scrollTop > 2) but SwipeContainer claimed the vertical lock', () => {
+    // scrollTop > 2(または disabled)のため isPulling.current が false のままだと、
+    // 従来はhandlePointerUpの「if (!isPulling.current) return」で早期終了し、
+    // SwipeContainerが立てた'vertical'ロックを解放できず、以降の横スワイプ・
+    // 長押しが全てブロックされる(デッドロック)不具合があった。
+    const gestureLockRef = { current: 'none' as 'none' | 'horizontal' | 'vertical' }
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} gestureLockRef={gestureLockRef}>
+        <div className="col-notes" data-scroll-top="3">
+          コンテンツ
+        </div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+    const scrollable = container.querySelector('.col-notes') as HTMLElement
+    Object.defineProperty(scrollable, 'scrollTop', { value: 3, configurable: true })
+
+    fireEvent.pointerDown(scrollable, { clientY: 100 })
+    // SwipeContainer側が縦スクロールと判定し、共有ロックを'vertical'にした状態を模す
+    gestureLockRef.current = 'vertical'
+    fireEvent.pointerUp(scrollable, { clientY: 140 })
+
+    expect(gestureLockRef.current).toBe('none')
+  })
+
+  it('clears a stale "vertical" gestureLockRef on the next pointerdown', () => {
+    const gestureLockRef = { current: 'vertical' as 'none' | 'horizontal' | 'vertical' }
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} gestureLockRef={gestureLockRef}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    fireEvent.pointerDown(container, { clientY: 100 })
+
+    expect(gestureLockRef.current).toBe('none')
+  })
+
   it('shows pulling indicators as dragged down and calls onRefresh on release beyond threshold', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
     render(

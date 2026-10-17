@@ -514,6 +514,48 @@ describe('SwipeContainer', () => {
     expect(onRowClick).toHaveBeenCalledTimes(1)
   })
 
+  it('does not dispatch a click when a large swipe was cancelled back near the start (max distance exceeded tolerance)', () => {
+    // 正味の移動量だけで判定すると、大きく横にドラッグして画面をめくろうとした後、
+    // 指を開始位置付近まで戻してキャンセルした場合にも誤ってタップ扱いされ、
+    // 意図せずメモ/フォルダが開いてしまう。ジェスチャー中の最大移動距離も見て防ぐ。
+    const onRowClick = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button onClick={onRowClick}>Row</button>
+      </SwipeContainer>,
+    )
+    const button = screen.getByRole('button', { name: 'Row' })
+
+    fireEvent.pointerDown(button, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(button, { clientX: 180, clientY: 100 }) // 80px大きくドラッグ
+    fireEvent.pointerUp(button, { clientX: 102, clientY: 100 }) // 開始位置付近まで戻してキャンセル
+
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
+  it('resolves a clickable ancestor when the tap target is an SVG element without its own click() support', () => {
+    // タップ先がSVG(アイコン)の内部要素だった場合、環境によってはclick()メソッドを
+    // 持たないことがあるため、呼び出し可能な最も近い祖先(ボタン等)にフォールバックする。
+    const onRowClick = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button onClick={onRowClick}>
+          <svg>
+            <path data-testid="icon-path" />
+          </svg>
+        </button>
+      </SwipeContainer>,
+    )
+    const path = screen.getByTestId('icon-path')
+    // SVGElementにはclick()が無い環境を模す
+    Object.defineProperty(path, 'click', { value: undefined, configurable: true })
+
+    fireEvent.pointerDown(path, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(path, { clientX: 101, clientY: 100 })
+
+    expect(onRowClick).toHaveBeenCalledTimes(1)
+  })
+
   it('preserves vertical gestureLockRef when lostpointercapture fires after vertical move', () => {
     const lockRef = { current: 'none' as const }
     render(

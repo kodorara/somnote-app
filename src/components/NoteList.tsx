@@ -113,6 +113,11 @@ export function NoteList({
   const handlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>, id: string) => {
     pointerStartRef.current = { x: e.clientX, y: e.clientY }
     longPressFiredRef.current = false
+    // 前回のジェスチャーで(縦スクロールと判定されてSwipeContainerがClick転送を
+    // 見送った結果)未消費のまま残っていることがあるため、新しいタッチ開始時に
+    // 確実にクリアする(残っているとこの新しいタップがhandleRowClickで誤って
+    // 握り潰される)。
+    tapHandledRef.current = false
     clearLongPressTimer()
     longPressTimerRef.current = window.setTimeout(() => {
       // 祖先のSwipeContainerがPointer Captureを保持している間はスクロール中でも
@@ -167,6 +172,7 @@ export function NoteList({
   const handlePointerCancel = () => {
     clearLongPressTimer()
     pointerStartRef.current = null
+    tapHandledRef.current = false
   }
 
   const handleRowClick = (id: string) => {

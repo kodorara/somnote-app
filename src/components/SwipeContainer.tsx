@@ -61,6 +61,11 @@ export function SwipeContainer({
   // タップ先)を覚えておく。ドラッグもスクロールも成立しなかった(=タップだった)
   // 場合に、ここへ手動でclickを転送する(詳細はhandlePointerUp参照)。
   const tapTargetRef = useRef<HTMLElement | null>(null)
+  // ジェスチャー中にstartPosから実際に動いた最大距離。大きくドラッグした後に
+  // 指を開始位置付近まで戻してキャンセルした場合、最終的な正味移動量だけで
+  // 判定すると誤ってタップ扱いされてしまうため、最大距離も合わせて見る
+  // (詳細はhandlePointerUp参照)。
+  const maxDistanceRef = useRef<number>(0)
 
   const prevClassNameRef = useRef(className)
 
@@ -82,6 +87,7 @@ export function SwipeContainer({
     startPos.current = null
     activePointerId.current = null
     tapTargetRef.current = null
+    maxDistanceRef.current = 0
     if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'
   }
 
@@ -107,8 +113,15 @@ export function SwipeContainer({
         resetGesture()
       }
     }
+    // 通知シェードの半開き・システムダイアログ・マルチウィンドウ操作等、
+    // document.visibilityStateが'hidden'に遷移しないままポインタが中断される
+    // ケースもあるため、windowのblurでも同様にリセットする(保険)。
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('blur', resetGesture)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('blur', resetGesture)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -151,6 +164,7 @@ export function SwipeContainer({
     isDragging.current = false
     isVerticalScroll.current = false
     tapTargetRef.current = target
+    maxDistanceRef.current = 0
 
     // Pointer Captureはpointerdownの時点で即座に取得する。横方向の意図が確定して
     // からに遅らせる案を一度試したが、実機では横スワイプによるページ切り替えその
@@ -174,6 +188,11 @@ export function SwipeContainer({
 
     const rawDeltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
+
+    const currentDistance = Math.hypot(rawDeltaX, deltaY)
+    if (currentDistance > maxDistanceRef.current) {
+      maxDistanceRef.current = currentDistance
+    }
 
     // 方向(縦/横)がまだ確定していない間は、指の腹が潰れることによる1px程度の
     // 微動だけで誤って方向ロックしてしまわないよう、一定の遊び(デッドゾーン)を
@@ -238,6 +257,7 @@ export function SwipeContainer({
       isDragging.current = false
       isVerticalScroll.current = false
       tapTargetRef.current = null
+      maxDistanceRef.current = 0
       rootRef.current?.style.setProperty('--drag-offset', '0px')
       rootRef.current?.classList.remove('is-dragging')
       return
@@ -247,10 +267,12 @@ export function SwipeContainer({
     const deltaY = e.clientY - startPos.current.y
     const wasVertical = isVerticalScroll.current
     const tapTarget = tapTargetRef.current
+    const maxDistance = maxDistanceRef.current
     startPos.current = null
     isDragging.current = false
     isVerticalScroll.current = false
     tapTargetRef.current = null
+    maxDistanceRef.current = 0
 
     // 指を離した瞬間にオフセットを0に戻し、transitionによるスナップまたはスナップバックを発動させる
     rootRef.current?.style.setProperty('--drag-offset', '0px')
@@ -263,12 +285,24 @@ export function SwipeContainer({
     // 複数選択モード中の2件目以降のタップ等、子要素のonClickに依存する機能が
     // Pointer Captureによって握り潰されずに機能する。
     // 判定は最終的な正味の移動量(デッドゾーン通過後に行ったり来たりして結局
-    // ほぼ同じ位置に戻った場合も含む)のみで行う。ただし縦スクロールと判定
+    // ほぼ同じ位置に戻った場合も含む)だけでなく、ジェスチャー中の最大移動距離
+    // (maxDistance)も見る。これが無いと、大きく横にドラッグして画面をめくろう
+    // としたものの指を開始位置付近まで戻してキャンセルした場合にも誤ってタップ
+    // 扱いされ、意図せずメモ/フォルダが開いてしまう。ただし縦スクロールと判定
     // された場合(wasVertical)は、その時点でPointer Captureを解放済みであり、
     // ブラウザの純正clickが既に本来の要素へ届いている可能性があるため、
     // 二重発火を避けるためここでは転送しない。
-    if (!wasVertical && tapTarget && Math.hypot(deltaX, deltaY) <= TAP_TOLERANCE_PX) {
-      tapTarget.click()
+    if (
+      !wasVertical &&
+      tapTarget &&
+      Math.hypot(deltaX, deltaY) <= TAP_TOLERANCE_PX &&
+      maxDistance <= TAP_TOLERANCE_PX
+    ) {
+      // タップ先がSVG(アイコン)の内部要素だった場合、環境によってはclick()メソッドを
+      // 持たない(SVGElementはHTMLElementではない)ことがあるため、呼び出し可能な
+      // 最も近い祖先(ボタン等)にフォールバックする。
+      const clickable = typeof tapTarget.click === 'function' ? tapTarget : tapTarget.closest('button, a, [role="button"]')
+      ;(clickable as HTMLElement | null)?.click?.()
     }
 
     if (wasVertical || Math.abs(deltaY) > Math.abs(deltaX)) {

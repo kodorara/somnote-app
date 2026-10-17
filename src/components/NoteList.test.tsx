@@ -133,6 +133,30 @@ describe('NoteList', () => {
       expect(screen.getByText('1件選択中')).toBeInTheDocument()
     })
 
+    it('resets a stale tapHandledRef on the next pointerdown so a later click-only tap is not swallowed', () => {
+      // ジェスチャーAでpointerup時点でtapHandledRef=trueになったが、後続のclickが
+      // 届かなかった(実機ではSwipeContainerが縦スクロールと判定しclick転送を
+      // 見送った場合等)とき、このフラグが未消費のまま残っていた。修正前は、
+      // 次のジェスチャーBでSwipeContainerから手動転送されたclickだけが届いても、
+      // この残骸に引っかかって正常なタップが握り潰されていた。
+      render(<NoteList {...defaultProps} notes={notes} folders={folders} />)
+      longPress(screen.getByText('先に書いたメモ'))
+
+      const row = screen.getByText('後で書いたメモ')
+      // ジェスチャーA: pointerupでtapHandledRef=trueになるが、clickは発火しない
+      fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
+      fireEvent.pointerUp(row, { clientX: 100, clientY: 100 })
+      expect(screen.getByText('2件選択中')).toBeInTheDocument()
+
+      // ジェスチャーB: 新しいpointerdownは実機でも必ず本来の要素に届くため発火
+      // させるが、pointerupは祖先にPointer Captureされたまま届かず、
+      // SwipeContainerからの手動click転送だけが届く状況を模す
+      fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
+      fireEvent.click(row)
+
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+    })
+
     it('lists the bulk-move folder options in seq order, matching the folder list screen', () => {
       render(<NoteList {...defaultProps} notes={notes} folders={folders} />)
       longPress(screen.getByText('先に書いたメモ'))

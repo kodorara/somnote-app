@@ -27,6 +27,11 @@ export function PullToRefresh({
   const isPulling = useRef(false)
 
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    // 前回のジェスチャー(scrollTop > 2での縦スクロール等、isPulling.currentが
+    // falseのままだった操作)でSwipeContainerが立てた'vertical'ロックが
+    // 解放されないまま残っていることがあるため、新しいタッチ開始時に確実にクリアする
+    // (詳細はhandlePointerUpのコメント参照)。
+    if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
     if (disabled || isRefreshing) return
     // スクロール可能な子要素でスクロール位置が0でない場合はプルトゥリフレッシュを開始しない
     const target = e.target as HTMLElement | null
@@ -62,11 +67,16 @@ export function PullToRefresh({
   }
 
   const handlePointerUp = async () => {
+    // scrollTop > 2やdisabled等によりisPulling.currentがfalseのままだった場合でも、
+    // SwipeContainer側が縦スクロール判定で'vertical'ロックを立てていることがある。
+    // SwipeContainerは'horizontal'の時しか自分でロックを解除しないため、ここで
+    // 解放しないと指を離した後もロックが'vertical'のまま永久に固着し、以降の
+    // 横スワイプ・長押しが全てブロックされてしまう(デッドロック防止)。
+    if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
     if (!isPulling.current) return
     isPulling.current = false
     startY.current = null
     startX.current = null
-    if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
 
     if (pullDistance >= threshold && !isRefreshing && !disabled) {
       setPullDistance(threshold)
@@ -92,17 +102,25 @@ export function PullToRefresh({
   // pointerup/pointercancelが発火しないまま中断され、引っ張りインジケータが表示されたまま
   // 固着することがある(SwipeContainer側の--drag-offset固着と同種の問題)。
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        isPulling.current = false
-        startY.current = null
-        startX.current = null
-        setPullDistance(0)
-        if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
-      }
+    const resetPulling = () => {
+      isPulling.current = false
+      startY.current = null
+      startX.current = null
+      setPullDistance(0)
+      if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
     }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') resetPulling()
+    }
+    // 通知シェードの半開き・システムダイアログ・マルチウィンドウ操作等、
+    // document.visibilityStateが'hidden'に遷移しないままポインタが中断される
+    // ケースもあるため、windowのblurでも同様にリセットする(保険)。
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('blur', resetPulling)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('blur', resetPulling)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
