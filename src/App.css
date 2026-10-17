@@ -699,6 +699,7 @@
     inset: 0;
     flex-basis: auto;
     transition: transform 0.2s;
+    will-change: transform;
     background: var(--color-bg);
   }
   /* ドラッグ中は指の動きに即座に追従させるためアニメーションを無効化 */

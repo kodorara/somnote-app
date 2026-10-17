@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは243/243全通過。ビルド正常（react-markdownチャンク分離確認済み）。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）のフェーズ1・フェーズ2・フェーズ3完了。
+テストは243/243全通過。ビルド正常。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）の全フェーズ（フェーズ1〜4）完了。
 
 ---
 
@@ -159,4 +159,11 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - メインJSチャンクが 595kB → 478.36kB に縮小（500kB警告解消）。
     - `react-markdown`（約117kB）がプレビュー切り替え時のみ読み込まれる別チャンクに分離。
     - テスト 243/243 全通過、ビルド成功、コミット（`5da1e5d`）、GitHub Actions デプロイ完了（Run `38932472066`）。
+
+### フェーズ4: 細部の軽量化(完了)
+- **対応:**
+  - `src/App.css`:
+    - モバイル表示時の各カラム要素（`.col-folders, .col-notes, .col-editor`）に `will-change: transform` を追加。一部のAndroid Chrome等におけるスワイプ開始時の初回コンポジット処理を軽量化。
+  - push並列化の見送り判断:
+    - `src/lib/sync.ts` の `runSync` 内でのpush逐次実行は、更新順序の維持および422エラー自己修復リトライの安全性を優先し、計画書の推奨通り「対応不要（見送り）」と判断。
 
