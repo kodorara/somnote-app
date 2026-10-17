@@ -1195,15 +1195,14 @@ describe('folder deletion and moving notes to trash', () => {
     swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
 
-    // 「仕事」フォルダを選択し、フォルダ一覧へ戻って「フォルダ削除」ボタンを押す
+    // 「フォルダ削除」を押して選択モードに入り、「仕事」フォルダを選択して「削除」を押す
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
     const folderBtn = await screen.findByRole('button', { name: '仕事' })
     fireEvent.click(folderBtn)
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
-    swipeRight(swipeContainer)
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+    // 画面遷移せずにフォルダ一覧画面のままであること
+    expect(container.querySelector('.columns')).toHaveClass('mobile-folders')
 
-    const deleteFolderBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
-    fireEvent.click(deleteFolderBtn)
+    fireEvent.click(screen.getByRole('button', { name: '選択したフォルダを削除' }))
 
     // 確認ダイアログが呼ばれたこと
     expect(confirmSpy).toHaveBeenCalled()
@@ -1243,14 +1242,10 @@ describe('folder deletion and moving notes to trash', () => {
     swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
 
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
     const folderBtn = await screen.findByRole('button', { name: '空フォルダ' })
     fireEvent.click(folderBtn)
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
-    swipeRight(swipeContainer)
-    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
-
-    const deleteFolderBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
-    fireEvent.click(deleteFolderBtn)
+    fireEvent.click(screen.getByRole('button', { name: '選択したフォルダを削除' }))
 
     // FolderListの「削除しますか？」は呼ばれるが、メモを含む警告文「含まれる」は呼ばれないこと
     expect(confirmSpy).toHaveBeenCalledWith('「空フォルダ」を削除しますか？')

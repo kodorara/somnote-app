@@ -980,9 +980,39 @@
   background: color-mix(in srgb, var(--color-danger) 10%, transparent);
   color: var(--color-danger);
 }
+.folder-settings-btn.folder-delete-confirm-btn:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.folder-settings-btn.folder-delete-confirm-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+}
 .folder-settings-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.folder-select-btn.is-delete-selected {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.folder-delete-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border-strong);
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.folder-delete-check.is-checked {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
 }
 
 /* — settings & backup — */

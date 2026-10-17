@@ -74,34 +74,44 @@ describe('FolderList', () => {
     vi.useRealTimers()
   })
 
-  it('disables the footer delete folder button when no folder or trash is selected', () => {
-    const { rerender } = render(<FolderList {...baseProps} folders={folders} selectedName={null} />)
-    expect(screen.getByRole('button', { name: '選択中のフォルダを削除' })).toBeDisabled()
-
-    rerender(<FolderList {...baseProps} folders={folders} selectedName="ゴミ箱" />)
-    expect(screen.getByRole('button', { name: '選択中のフォルダを削除' })).toBeDisabled()
-  })
-
-  it('calls onDelete when the footer delete folder button is clicked and confirmed', () => {
+  it('enters folder delete mode when フォルダ削除 is clicked, selects a folder without navigating, and deletes it on clicking 削除', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onSelect = vi.fn()
     const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} selectedName="仕事" onDelete={onDelete} />)
+    render(<FolderList {...baseProps} folders={folders} onSelect={onSelect} onDelete={onDelete} />)
 
-    const deleteBtn = screen.getByRole('button', { name: '選択中のフォルダを削除' })
-    expect(deleteBtn).not.toBeDisabled()
-    fireEvent.click(deleteBtn)
+    // 1. 「フォルダ削除」ボタンを押して選択モードに入る
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
 
+    // まだフォルダ未選択なので「削除」ボタンは無効
+    const confirmDeleteBtn = screen.getByRole('button', { name: '選択したフォルダを削除' })
+    expect(confirmDeleteBtn).toBeDisabled()
+
+    // 2. 「仕事」フォルダをクリックすると、画面遷移(onSelect)せずに削除対象として選択される
+    fireEvent.click(screen.getByRole('button', { name: '仕事' }))
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(confirmDeleteBtn).not.toBeDisabled()
+
+    // 3. 「削除」ボタンを押すと確認ダイアログが出て削除が実行され、選択モードが終了する
+    fireEvent.click(confirmDeleteBtn)
     expect(confirmSpy).toHaveBeenCalledWith('「仕事」を削除しますか？')
     expect(onDelete).toHaveBeenCalledWith(folders[1])
+    expect(screen.getByRole('button', { name: 'フォルダ削除' })).toBeInTheDocument()
   })
 
-  it('does not call onDelete when footer delete folder confirmation is cancelled', () => {
+  it('cancels folder delete mode without calling onDelete when キャンセル is clicked or confirmation is declined', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const onDelete = vi.fn()
-    render(<FolderList {...baseProps} folders={folders} selectedName="仕事" onDelete={onDelete} />)
+    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '選択中のフォルダを削除' }))
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '仕事' }))
+    fireEvent.click(screen.getByRole('button', { name: '選択したフォルダを削除' }))
     expect(onDelete).not.toHaveBeenCalled()
+
+    // キャンセルボタンで通常モードに戻る
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除をキャンセル' }))
+    expect(screen.getByRole('button', { name: 'フォルダ削除' })).toBeInTheDocument()
   })
 
   it('renders sync button in footer and handles click and disabled states', () => {

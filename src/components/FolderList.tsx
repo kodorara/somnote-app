@@ -49,24 +49,36 @@ export function FolderList({
   online = true,
 }: Props) {
   const [newName, setNewName] = useState('')
+  const [deleteMode, setDeleteMode] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const draggingId = useRef<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map())
 
-  const selectedFolder = folders.find((f) => f.name === selectedName) ?? null
-
-  const handleDeleteSelectedFolder = () => {
-    if (!selectedFolder) return
-    if (window.confirm(`「${selectedFolder.name}」を削除しますか？`)) {
-      onDelete(selectedFolder)
-    }
-  }
-
-
   const byId = new Map(folders.map((f) => [f.folderId, f]))
   const baseOrder = sortedBySeq(folders).map((f) => f.folderId)
   const order = dragOrder ?? baseOrder
+
+  const deleteTarget = deleteTargetId ? byId.get(deleteTargetId) ?? null : null
+
+  const enterDeleteMode = () => {
+    setDeleteMode(true)
+    setDeleteTargetId(null)
+  }
+
+  const exitDeleteMode = () => {
+    setDeleteMode(false)
+    setDeleteTargetId(null)
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    if (window.confirm(`「${deleteTarget.name}」を削除しますか？`)) {
+      onDelete(deleteTarget)
+      exitDeleteMode()
+    }
+  }
 
   // ドラッグ中、指/カーソルが各フォルダ行の中点より上にあるかどうかで
   // 挿入位置を決める(各行の実測位置を見るため、見た目の行高さに依存しない)。
@@ -125,6 +137,7 @@ export function FolderList({
         {order.map((id) => {
           const f = byId.get(id)
           if (!f) return null
+          const isDeleteSelected = deleteMode && deleteTargetId === f.folderId
           return (
             <li
               key={f.folderId}
@@ -148,10 +161,25 @@ export function FolderList({
               </button>
               <button
                 type="button"
-                className="folder-select-btn"
-                aria-current={f.name === selectedName}
-                onClick={() => onSelect(f.name)}
+                className={`folder-select-btn${isDeleteSelected ? ' is-delete-selected' : ''}`}
+                aria-current={!deleteMode && f.name === selectedName ? true : undefined}
+                aria-pressed={deleteMode ? isDeleteSelected : undefined}
+                onClick={() => {
+                  if (deleteMode) {
+                    setDeleteTargetId((prev) => (prev === f.folderId ? null : f.folderId))
+                  } else {
+                    onSelect(f.name)
+                  }
+                }}
               >
+                {deleteMode && (
+                  <span
+                    className={`folder-delete-check${isDeleteSelected ? ' is-checked' : ''}`}
+                    aria-hidden="true"
+                  >
+                    {isDeleteSelected ? '✓' : ''}
+                  </span>
+                )}
                 <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 <span className="folder-name">{f.name}</span>
                 {!!noteCounts?.[f.name] && (
@@ -170,7 +198,10 @@ export function FolderList({
           className="folder-select-btn folder-trash-btn"
           aria-label={trashCount !== undefined && trashCount > 0 ? `ゴミ箱 (${trashCount})` : 'ゴミ箱'}
           aria-current={selectedName === 'ゴミ箱'}
-          onClick={() => onSelect('ゴミ箱')}
+          onClick={() => {
+            exitDeleteMode()
+            onSelect('ゴミ箱')
+          }}
         >
           <TrashIcon size={16} className="trash-folder-icon" />
           <span className="folder-trash-label">ゴミ箱</span>
@@ -197,39 +228,64 @@ export function FolderList({
       </div>
 
       <div className="folder-settings-wrap">
-        {onOpenSettings && (
-          <button
-            type="button"
-            className="folder-settings-btn"
-            aria-label="設定を開く"
-            onClick={onOpenSettings}
-          >
-            <GearIcon size={16} />
-            <span>設定</span>
-          </button>
+        {deleteMode ? (
+          <>
+            <button
+              type="button"
+              className="folder-settings-btn"
+              aria-label="フォルダ削除をキャンセル"
+              onClick={exitDeleteMode}
+            >
+              <span>キャンセル</span>
+            </button>
+            <button
+              type="button"
+              className="folder-settings-btn folder-delete-confirm-btn"
+              aria-label="選択したフォルダを削除"
+              disabled={!deleteTarget}
+              onClick={handleConfirmDelete}
+            >
+              <TrashIcon size={16} />
+              <span>削除</span>
+            </button>
+          </>
+        ) : (
+          <>
+            {onOpenSettings && (
+              <button
+                type="button"
+                className="folder-settings-btn"
+                aria-label="設定を開く"
+                onClick={onOpenSettings}
+              >
+                <GearIcon size={16} />
+                <span>設定</span>
+              </button>
+            )}
+            {onSync && (
+              <button
+                type="button"
+                className="folder-settings-btn"
+                aria-label="同期"
+                disabled={!online || isSyncing}
+                onClick={onSync}
+              >
+                <RefreshIcon size={16} className={isSyncing ? 'pull-refresh-icon is-spinning' : undefined} />
+                <span>{isSyncing ? '同期中...' : '同期'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="folder-settings-btn folder-delete-selected-btn"
+              aria-label="フォルダ削除"
+              disabled={folders.length === 0}
+              onClick={enterDeleteMode}
+            >
+              <TrashIcon size={16} />
+              <span>フォルダ削除</span>
+            </button>
+          </>
         )}
-        {onSync && (
-          <button
-            type="button"
-            className="folder-settings-btn"
-            aria-label="同期"
-            disabled={!online || isSyncing}
-            onClick={onSync}
-          >
-            <RefreshIcon size={16} className={isSyncing ? 'pull-refresh-icon is-spinning' : undefined} />
-            <span>{isSyncing ? '同期中...' : '同期'}</span>
-          </button>
-        )}
-        <button
-          type="button"
-          className="folder-settings-btn folder-delete-selected-btn"
-          aria-label="選択中のフォルダを削除"
-          disabled={!selectedFolder}
-          onClick={handleDeleteSelectedFolder}
-        >
-          <TrashIcon size={16} />
-          <span>フォルダ削除</span>
-        </button>
       </div>
     </div>
   )
