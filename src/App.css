@@ -660,12 +660,13 @@
 }
 
 /* 画面幅によるブレークポイントに加えて、タッチ操作のみの端末(hover:none かつ
-   pointer:coarse)は幅の判定結果に関わらず必ずモバイル用の1画面スワイプレイアウトに
-   する。一部のAndroid端末のPWA standalone表示では、OS側の表示サイズ設定等により
-   CSSビューポート幅が768pxを超えて解決され、デスクトップ用の3カラム固定幅
-   レイアウト(フォルダ画面右側が余白になる不具合)が適用されてしまうことがある
-   ため、幅だけに頼らない保険をかける。 */
-@media (max-width: 768px), (max-width: 1024px) and (hover: none) and (pointer: coarse) {
+   pointer:coarse)は、幅がいくつであってもモバイル用の1画面スワイプレイアウトを
+   強制する。実機検証で、通常モードでは右側に余白が残り、Chromeの「PC版サイト」を
+   有効にすると直ることが確認された。これは、この端末の通常モードでのCSSビュー
+   ポート幅が768px(当初の想定)はおろか1024px(一度試した拡張値)すら超えて解決
+   されていることを意味する。そのため幅の上限は設けず、タッチ専用端末であること
+   だけで判定する(幅に依存しない唯一の確実な判定方法)。 */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
   .mobile-only { display: inline-flex; }
 
   .editor-edge-swipe-handle {
