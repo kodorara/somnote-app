@@ -29,6 +29,7 @@ export interface EditorActionBarProps {
   onDelete: () => void
   isTrashNote?: boolean
   onRestore?: () => void
+  onPermanentDelete?: () => void
   isHistoryOpen?: boolean
   onToggleHistory?: () => void
 }
@@ -49,6 +50,7 @@ export function EditorActionBar({
   onDelete,
   isTrashNote = false,
   onRestore,
+  onPermanentDelete,
   isHistoryOpen = false,
   onToggleHistory,
 }: EditorActionBarProps) {
@@ -170,6 +172,9 @@ export function EditorActionBar({
           <span>このメモはゴミ箱に入っています</span>
           <button type="button" className="btn btn-primary restore-btn" onClick={onRestore}>
             復元する
+          </button>
+          <button type="button" className="btn btn-danger permanent-delete-btn" onClick={onPermanentDelete}>
+            完全に削除
           </button>
         </div>
       )}

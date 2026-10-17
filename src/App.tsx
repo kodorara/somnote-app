@@ -148,13 +148,19 @@ export default function App() {
   // (初回起動)は全件構築が必要だが、これをawaitで待つと編集画面が表示される
   // タイミングまで毎回ブロックしてしまう(起動直後のスワイプ等の操作感が重くなる
   // 主因だった)。バックグラウンドで実行させ、起動そのものはブロックしない。
-  const applySearchIndexUpdate = async (updatedNotes: StoredNote[] | null) => {
+  const applySearchIndexUpdate = async (
+    updatedNotes: StoredNote[] | null,
+    permanentlyDeletedIds?: string[],
+  ) => {
     if (!searchIndexRef.current) {
       void rebuildSearchIndex()
       return
     }
     if (updatedNotes) {
       for (const n of updatedNotes) updateSearchIndexForNote(n)
+    }
+    if (permanentlyDeletedIds) {
+      for (const id of permanentlyDeletedIds) removeNoteFromIndex(searchIndexRef.current, id)
     }
   }
 
@@ -257,7 +263,7 @@ export default function App() {
         const allFolders = await db.folders.toArray()
         setFolders(allFolders)
         await refreshNotesForSelectedFolder()
-        await applySearchIndexUpdate(syncResult?.updatedNotes ?? null)
+        await applySearchIndexUpdate(syncResult?.updatedNotes ?? null, syncResult?.permanentlyDeletedIds)
       } finally {
         syncInFlightRef.current = false
       }
@@ -532,6 +538,52 @@ export default function App() {
     void loadCounts()
   }
 
+  // 単体の完全削除(エディタでゴミ箱内メモを開いている時)
+  const permanentlyDeleteActiveNote = async () => {
+    if (!activeNote) return
+    if (!window.confirm('このメモを完全に削除しますか？この操作は取り消せません。')) return
+
+    if (activeNote.baseSha === null) {
+      // リモートに一度も同期していない→即座にローカルから消すだけでよい
+      await db.notes.delete(activeNote.id)
+    } else {
+      await db.notes.put({
+        ...activeNote,
+        pendingPermanentDelete: true,
+        dirty: true,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    if (searchIndexRef.current) removeNoteFromIndex(searchIndexRef.current, activeNote.id)
+    setNotes(notes.filter((n) => n.id !== activeNote.id))
+    setActiveNote(null)
+    setMobileScreen('notes')
+    void loadCounts()
+    await refreshPendingCount()
+    if (navigator.onLine) void handleSyncNow()
+  }
+
+  // 複数選択からの一括完全削除(ゴミ箱のメモ一覧で長押し複数選択時)
+  const bulkPermanentlyDeleteNotes = async (ids: string[]) => {
+    if (!window.confirm(`選択した${ids.length}件のメモを完全に削除しますか？この操作は取り消せません。`)) return
+    const targets = (await db.notes.bulkGet(ids)).filter((n): n is StoredNote => !!n)
+    const now = new Date().toISOString()
+    const toDeleteLocally = targets.filter((n) => n.baseSha === null).map((n) => n.id)
+    const toQueue = targets.filter((n) => n.baseSha !== null)
+    if (toDeleteLocally.length > 0) await db.notes.bulkDelete(toDeleteLocally)
+    if (toQueue.length > 0) {
+      await db.notes.bulkPut(toQueue.map((n) => ({ ...n, pendingPermanentDelete: true, dirty: true, updatedAt: now })))
+    }
+    if (searchIndexRef.current) {
+      for (const id of ids) removeNoteFromIndex(searchIndexRef.current, id)
+    }
+    const idSet = new Set(ids)
+    setNotes((prev) => prev.filter((n) => !idSet.has(n.id)))
+    void loadCounts()
+    await refreshPendingCount()
+    if (navigator.onLine) void handleSyncNow()
+  }
+
 
   const handleCreateFolder = async (name: string) => {
     setFolderError(null)
@@ -689,7 +741,8 @@ export default function App() {
     } finally {
       setSyncProgress(null)
       await refreshPendingCount()
-      await applySearchIndexUpdate(result?.updatedNotes ?? null)
+      await applySearchIndexUpdate(result?.updatedNotes ?? null, result?.permanentlyDeletedIds)
+      await refreshNotesForSelectedFolder()
       void loadCounts()
       syncInFlightRef.current = false
     }
@@ -846,6 +899,7 @@ export default function App() {
               folders={folders}
               onBulkMove={bulkMoveNotes}
               onBulkDelete={bulkDeleteNotes}
+              onBulkPermanentDelete={bulkPermanentlyDeleteNotes}
               onSelect={async (id) => {
                 await leaveEditor()
                 const n = await db.notes.get(id)
@@ -878,6 +932,7 @@ export default function App() {
                   onDelete={deleteActiveNote}
                   isTrashNote={!!activeNote.deleted}
                   onRestore={restoreActiveNote}
+                  onPermanentDelete={permanentlyDeleteActiveNote}
                   isHistoryOpen={isHistoryOpen}
                   onToggleHistory={() => setIsHistoryOpen((o) => !o)}
                 />

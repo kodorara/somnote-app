@@ -1255,3 +1255,185 @@ describe('folder deletion and moving notes to trash', () => {
     })
   })
 })
+
+describe('permanent delete in trash', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+  const longPress = async (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
+  }
+
+  it('permanently deletes note with baseSha: null immediately from IndexedDB', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'local-trash-1',
+      title: 'ローカルのみのゴミ箱メモ',
+      folder: '前ノート',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: '消去対象本文',
+      baseSha: null,
+      dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    // ゴミ箱を開く
+    fireEvent.click(await screen.findByRole('button', { name: 'ゴミ箱 (1)' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    // メモをタップしてエディタへ
+    fireEvent.click(await screen.findByText('ローカルのみのゴミ箱メモ'))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'), { timeout: 5000 })
+
+    // バナーの「完全に削除」をクリック
+    const permDeleteBtn = await screen.findByRole('button', { name: '完全に削除' })
+    fireEvent.click(permDeleteBtn)
+
+    // DBから即時完全消滅していること
+    await waitFor(async () => {
+      const note = await db.notes.get('local-trash-1')
+      expect(note).toBeUndefined()
+    })
+
+    // メモ一覧に戻っていること
+    expect(container.querySelector('.columns')).toHaveClass('mobile-notes')
+  })
+
+  it('queues permanent delete for note with baseSha and deletes remotely on sync', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'synced-trash-1',
+      title: '同期済みゴミ箱メモ',
+      folder: '前ノート',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: 'リモート削除対象本文',
+      baseSha: 'remote-sha-1',
+      dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({
+      tree: [{ path: 'notes/前ノート/synced-trash-1.md', sha: 'remote-sha-1' }],
+      truncated: false,
+    })
+    const deleteContentSpy = vi.spyOn(githubClient, 'deleteContent').mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ゴミ箱 (1)' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    fireEvent.click(await screen.findByText('同期済みゴミ箱メモ'))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'), { timeout: 5000 })
+
+    const permDeleteBtn = await screen.findByRole('button', { name: '完全に削除' })
+    fireEvent.click(permDeleteBtn)
+
+    // リモートDELETEが呼ばれ、IndexedDBからも完全削除されること
+    await waitFor(() => {
+      expect(deleteContentSpy).toHaveBeenCalledWith('o', 'somnote-data', 'notes/前ノート/synced-trash-1.md', 'remote-sha-1', 't')
+    })
+    await waitFor(async () => {
+      const note = await db.notes.get('synced-trash-1')
+      expect(note).toBeUndefined()
+    })
+  })
+
+  it('bulk-permanently-deletes notes from trash multi-select', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    await db.notes.put({
+      id: 'bulk-del-1',
+      title: '一括完全削除1',
+      folder: '前ノート',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: 'b1',
+      baseSha: null,
+      dirty: false,
+    })
+    await db.notes.put({
+      id: 'bulk-del-2',
+      title: '一括完全削除2',
+      folder: '前ノート',
+      seq: 1,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-01-01T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: 'b2',
+      baseSha: null,
+      dirty: false,
+    })
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'), { timeout: 5000 })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ゴミ箱 (2)' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'), { timeout: 5000 })
+
+    // 1件目を長押し
+    await longPress(await screen.findByText('一括完全削除1'))
+    expect(screen.getByText('1件選択中')).toBeInTheDocument()
+
+    // 2件目をタップして選択追加
+    fireEvent.pointerDown(screen.getByText('一括完全削除2'), { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(screen.getByText('一括完全削除2'), { clientX: 100, clientY: 100 })
+    fireEvent.click(screen.getByText('一括完全削除2'))
+    expect(screen.getByText('2件選択中')).toBeInTheDocument()
+
+    // 「完全に削除」ボタンをクリック
+    const bulkPermBtn = screen.getByRole('button', { name: '選択したメモを完全に削除' })
+    fireEvent.click(bulkPermBtn)
+
+    // DBから両方削除されていること
+    await waitFor(async () => {
+      const n1 = await db.notes.get('bulk-del-1')
+      const n2 = await db.notes.get('bulk-del-2')
+      expect(n1).toBeUndefined()
+      expect(n2).toBeUndefined()
+    })
+  })
+})
+

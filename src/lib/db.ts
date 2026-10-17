@@ -10,6 +10,10 @@ export interface StoredNote extends Note {
   // frontmatter(GitHub上のMarkdown)には含めないローカル専用フィールド。
   // 省略(undefined)は「保留中の旧パスなし」とみなす(nullと同義)。
   pendingOldPath?: { folder: string; sha: string } | null
+  // 完全削除が予約されていることを示す。trueの間は同期時にリモートファイルのDELETEを
+  // 試み、成功したらローカルレコードごと消す。オフライン中はtrueのまま残り、
+  // 次回オンライン時の同期で自動的に処理される。
+  pendingPermanentDelete?: boolean
 }
 
 export interface StoredFolder {

@@ -107,6 +107,13 @@ button, input, textarea {
   border-color: var(--color-accent-700);
 }
 .btn-primary:hover { background: var(--color-accent-800); }
+.btn-danger {
+  color: #ffc9c9;
+  background: color-mix(in srgb, #e53e3e 20%, transparent);
+  border-color: color-mix(in srgb, #e53e3e 40%, transparent);
+}
+.btn-danger:hover { background: color-mix(in srgb, #e53e3e 32%, transparent); }
+.btn-danger:active { background: color-mix(in srgb, #e53e3e 45%, transparent); }
 .btn-ghost { border-color: transparent; color: var(--color-accent); padding-inline: var(--space-1); }
 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 

@@ -299,5 +299,55 @@ describe('runSync', () => {
 
     await expect(runSync(localNotes, remoteTree, github)).rejects.toThrow('Network error on delete')
   })
+
+  it('deletes remote content and excludes note from updated when permanent deletion succeeds', async () => {
+    const localNotes = [
+      note({ id: 'perm-1', folder: 'ゴミ箱', dirty: true, baseSha: 'sha-p1', pendingPermanentDelete: true }),
+      note({ id: 'normal-1', folder: '仕事', dirty: false, baseSha: 'sha-n1' }),
+    ]
+    const remoteTree = [
+      { path: 'notes/ゴミ箱/perm-1.md', sha: 'sha-p1' },
+      { path: 'notes/仕事/normal-1.md', sha: 'sha-n1' },
+    ]
+    const github = {
+      putContent: vi.fn(),
+      getContent: vi.fn(),
+      deleteContent: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const result = await runSync(localNotes, remoteTree, github)
+
+    expect(github.deleteContent).toHaveBeenCalledWith('ゴミ箱', 'perm-1', 'sha-p1')
+    expect(result.permanentlyDeletedIds).toEqual(['perm-1'])
+    expect(result.updated.find((n) => n.id === 'perm-1')).toBeUndefined()
+    expect(result.updated.find((n) => n.id === 'normal-1')).toBeDefined()
+  })
 })
+
+describe('planSync permanent delete', () => {
+  it('schedules permanent deletion in toDelete when pendingPermanentDelete is true and note exists remotely', () => {
+    const local = [
+      note({ id: 'perm-1', folder: 'ゴミ箱', baseSha: 'sha-p1', pendingPermanentDelete: true }),
+    ]
+    const remoteTree = [{ path: 'notes/ゴミ箱/perm-1.md', sha: 'sha-p1' }]
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toDelete).toEqual([
+      { id: 'perm-1', folder: 'ゴミ箱', sha: 'sha-p1', permanent: true },
+    ])
+    expect(plan.toPush).toEqual([])
+  })
+
+  it('ignores pendingPermanentDelete when baseSha is null (never synced)', () => {
+    const local = [
+      note({ id: 'perm-local', folder: 'ゴミ箱', baseSha: null, pendingPermanentDelete: true }),
+    ]
+    const remoteTree: { path: string; sha: string }[] = []
+    const plan = planSync(local, remoteTree)
+
+    expect(plan.toDelete).toEqual([])
+    expect(plan.toPush).toEqual([])
+  })
+})
+
 

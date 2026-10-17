@@ -22,7 +22,13 @@ export async function fullSync(
   settings: GithubSettings,
   github: FullSyncGithub,
   onPullProgress?: (done: number, total: number) => void,
-): Promise<{ pushed: number; pulled: number; conflicts: ConflictItem[]; updatedNotes: StoredNote[] }> {
+): Promise<{
+  pushed: number
+  pulled: number
+  conflicts: ConflictItem[]
+  updatedNotes: StoredNote[]
+  permanentlyDeletedIds: string[]
+}> {
   const { owner, repo, token } = settings
   const { tree } = await github.getTree(owner, repo, 'main', token)
 
@@ -60,7 +66,7 @@ export async function fullSync(
   // 既に完了したバッチの内容(例:5,386件中3,000件)は失わずに残る。
   // batchResultには「pull対象」だけが入り、衝突ノートはplanSync上toPullとは
   // 別カテゴリなのでここには一切含まれない(衝突の上書き保存は発生しない)。
-  const { updated, conflicts: conflictIds, plan } = await runSync(
+  const { updated, conflicts: conflictIds, plan, permanentlyDeletedIds } = await runSync(
     localNotes,
     tree,
     githubAdapter,
@@ -69,6 +75,10 @@ export async function fullSync(
       await onPullProgress?.(done, total)
     },
   )
+
+  if (permanentlyDeletedIds.length > 0) {
+    await db.notes.bulkDelete(permanentlyDeletedIds)
+  }
 
   const conflicts: ConflictItem[] = []
   for (const id of conflictIds) {
@@ -101,5 +111,5 @@ export async function fullSync(
   const changedIds = new Set<string>([...plan.toPush, ...plan.toPull.map((t) => t.id)])
   const updatedNotes = toPersist.filter((n) => changedIds.has(n.id))
 
-  return { pushed: plan.toPush.length, pulled: plan.toPull.length, conflicts, updatedNotes }
+  return { pushed: plan.toPush.length, pulled: plan.toPull.length, conflicts, updatedNotes, permanentlyDeletedIds }
 }

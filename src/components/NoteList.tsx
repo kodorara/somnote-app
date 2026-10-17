@@ -29,6 +29,7 @@ interface Props {
   folders?: StoredFolder[]
   onBulkMove?: (ids: string[], folderName: string) => void
   onBulkDelete?: (ids: string[]) => void
+  onBulkPermanentDelete?: (ids: string[]) => void
 }
 
 const SORTERS: Record<SortBy, (a: NoteSummary, b: NoteSummary) => number> = {
@@ -62,6 +63,7 @@ export function NoteList({
   folders = [],
   onBulkMove,
   onBulkDelete,
+  onBulkPermanentDelete,
 }: Props) {
   const visible = isTrash ? notes.filter((n) => n.deleted) : notes.filter((n) => !n.deleted)
   const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
@@ -94,7 +96,6 @@ export function NoteList({
   const exitMultiSelect = () => setSelectedIds(new Set())
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>, id: string) => {
-    if (isTrash) return // ゴミ箱内では複数選択を提供しない
     pointerStartRef.current = { x: e.clientX, y: e.clientY }
     longPressFiredRef.current = false
     clearLongPressTimer()
@@ -134,40 +135,56 @@ export function NoteList({
       {multiSelectMode && (
         <div className="note-bulk-bar">
           <span className="note-bulk-count">{selectedIds.size}件選択中</span>
-          <div className="action-bar-folder-select" title="選択したメモをフォルダ移動">
-            <FolderIcon size={16} className="folder-select-icon" />
-            <select
-              className="action-bar-select"
-              aria-label="選択したメモをフォルダ移動"
-              value=""
-              onChange={(e) => {
-                const folderName = e.target.value
-                if (!folderName) return
-                onBulkMove?.(Array.from(selectedIds), folderName)
+          {isTrash ? (
+            <button
+              type="button"
+              className="btn btn-danger note-bulk-delete-btn"
+              aria-label="選択したメモを完全に削除"
+              onClick={() => {
+                onBulkPermanentDelete?.(Array.from(selectedIds))
                 exitMultiSelect()
               }}
             >
-              <option value="" disabled>
-                フォルダへ移動
-              </option>
-              {sortedBySeq(folders).map((f) => (
-                <option key={f.folderId} value={f.name}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="button"
-            className="btn note-bulk-delete-btn"
-            aria-label="選択したメモをゴミ箱に移動"
-            onClick={() => {
-              onBulkDelete?.(Array.from(selectedIds))
-              exitMultiSelect()
-            }}
-          >
-            <TrashIcon size={16} />
-          </button>
+              完全に削除
+            </button>
+          ) : (
+            <>
+              <div className="action-bar-folder-select" title="選択したメモをフォルダ移動">
+                <FolderIcon size={16} className="folder-select-icon" />
+                <select
+                  className="action-bar-select"
+                  aria-label="選択したメモをフォルダ移動"
+                  value=""
+                  onChange={(e) => {
+                    const folderName = e.target.value
+                    if (!folderName) return
+                    onBulkMove?.(Array.from(selectedIds), folderName)
+                    exitMultiSelect()
+                  }}
+                >
+                  <option value="" disabled>
+                    フォルダへ移動
+                  </option>
+                  {sortedBySeq(folders).map((f) => (
+                    <option key={f.folderId} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                className="btn note-bulk-delete-btn"
+                aria-label="選択したメモをゴミ箱に移動"
+                onClick={() => {
+                  onBulkDelete?.(Array.from(selectedIds))
+                  exitMultiSelect()
+                }}
+              >
+                <TrashIcon size={16} />
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="action-bar-btn-close"

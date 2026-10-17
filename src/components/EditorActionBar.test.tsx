@@ -128,6 +128,22 @@ describe('EditorActionBar', () => {
     expect(onRestore).toHaveBeenCalledTimes(2)
   })
 
+  it('renders permanent delete button and calls onPermanentDelete when clicked in trash banner', () => {
+    const onPermanentDelete = vi.fn()
+    render(
+      <EditorActionBar
+        {...defaultProps}
+        isTrashNote={true}
+        onPermanentDelete={onPermanentDelete}
+      />,
+    )
+    const deleteBtn = screen.getByRole('button', { name: '完全に削除' })
+    expect(deleteBtn).toBeInTheDocument()
+
+    fireEvent.click(deleteBtn)
+    expect(onPermanentDelete).toHaveBeenCalledTimes(1)
+  })
+
   it('renders history button and calls onToggleHistory when clicked', () => {
     const onToggleHistory = vi.fn()
     render(

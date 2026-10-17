@@ -208,13 +208,35 @@ describe('NoteList', () => {
       expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
     })
 
-    it('does not offer multi-select in the trash view', () => {
+    it('offers multi-select in the trash view with only permanent delete action', () => {
+      const onBulkPermanentDelete = vi.fn()
       const mixedNotes = [
-        { id: 'deleted-1', title: '削除済みメモ', seq: 0, createdAt: '', updatedAt: '', tags: [], deleted: true },
+        { id: 'deleted-1', title: '削除済みメモ1', seq: 0, createdAt: '', updatedAt: '', tags: [], deleted: true },
+        { id: 'deleted-2', title: '削除済みメモ2', seq: 1, createdAt: '', updatedAt: '', tags: [], deleted: true },
       ]
-      render(<NoteList {...defaultProps} notes={mixedNotes} isTrash folders={folders} />)
-      longPress(screen.getByText('削除済みメモ'))
+      render(
+        <NoteList
+          {...defaultProps}
+          notes={mixedNotes}
+          isTrash
+          folders={folders}
+          onBulkPermanentDelete={onBulkPermanentDelete}
+        />,
+      )
+      longPress(screen.getByText('削除済みメモ1'))
 
+      // 1件選択中になり、バルクバーに「完全に削除」が表示される
+      expect(screen.getByText('1件選択中')).toBeInTheDocument()
+      const permDeleteBtn = screen.getByRole('button', { name: '選択したメモを完全に削除' })
+      expect(permDeleteBtn).toBeInTheDocument()
+
+      // 通常の「フォルダへ移動」「ゴミ箱に移動」は表示されないこと
+      expect(screen.queryByLabelText('選択したメモをフォルダ移動')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('選択したメモをゴミ箱に移動')).not.toBeInTheDocument()
+
+      // 完全に削除をクリックすると onBulkPermanentDelete が呼ばれ、複数選択が解除される
+      fireEvent.click(permDeleteBtn)
+      expect(onBulkPermanentDelete).toHaveBeenCalledWith(['deleted-1'])
       expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
     })
   })

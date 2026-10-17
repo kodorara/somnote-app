@@ -13,6 +13,7 @@ export interface DeleteTarget {
   id: string
   folder: string
   sha: string
+  permanent?: boolean
 }
 
 export interface SyncPlan {
@@ -52,6 +53,13 @@ export function planSync(localNotes: StoredNote[], remoteTree: Pick<TreeEntry, '
 
   for (const n of localNotes) {
     const remoteSha = remoteByPath.get(notePath(n.folder, n.id))
+
+    if (n.pendingPermanentDelete) {
+      if (n.baseSha !== null && remoteSha !== undefined) {
+        plan.toDelete.push({ id: n.id, folder: n.folder, sha: remoteSha, permanent: true })
+      }
+      continue
+    }
 
     if (n.dirty) {
       if (n.baseSha === null) {
@@ -147,7 +155,7 @@ export async function runSync(
   // バッチ単位でIndexedDBに永続化できるようにするため。途中でレート制限等により
   // 後続バッチが失敗しても、既に処理済みのバッチの内容は失われない。
   onPullProgress?: (done: number, total: number, batchResult: StoredNote[]) => void | Promise<void>,
-): Promise<{ updated: StoredNote[]; conflicts: string[]; plan: SyncPlan }> {
+): Promise<{ updated: StoredNote[]; conflicts: string[]; plan: SyncPlan; permanentlyDeletedIds: string[] }> {
   const plan = planSync(localNotes, remoteTree)
   const byId = new Map(localNotes.map((n) => [n.id, { ...n }]))
 
@@ -163,16 +171,22 @@ export async function runSync(
     pushedSuccessfully.add(id)
   }
 
-  // 旧パスの削除:
-  // 新パスへのpushが成功したノート、またはローカルで既に未同期(dirty)でないノートについて、
-  // リモートに残っている旧パスのファイルを削除する。成功したらpendingOldPathをクリアする
-  // (失敗した場合は残したままにして、次回同期で自動的にリトライされるようにする)。
+  const permanentlyDeletedIds: string[] = []
+
+  // 旧パスの削除・完全削除:
+  // 新パスへのpushが成功したノート、またはローカルで既に未同期(dirty)でないノート、
+  // もしくは完全削除(del.permanent)についてリモートのファイルを削除する。
   if (github.deleteContent && plan.toDelete.length > 0) {
     for (const del of plan.toDelete) {
       const local = byId.get(del.id)
-      if (local && (pushedSuccessfully.has(del.id) || !local.dirty)) {
+      if (local && (del.permanent || pushedSuccessfully.has(del.id) || !local.dirty)) {
         await github.deleteContent(del.folder, del.id, del.sha)
-        local.pendingOldPath = null
+        if (del.permanent) {
+          byId.delete(del.id)
+          permanentlyDeletedIds.push(del.id)
+        } else {
+          local.pendingOldPath = null
+        }
       }
     }
   }
@@ -217,5 +231,5 @@ export async function runSync(
     })
   }
 
-  return { updated: Array.from(byId.values()), conflicts: plan.conflicts, plan }
+  return { updated: Array.from(byId.values()), conflicts: plan.conflicts, plan, permanentlyDeletedIds }
 }

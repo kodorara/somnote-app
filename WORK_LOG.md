@@ -7,7 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）のフェーズ1（スワイプ×プルトゥリフレッシュ排他制御）およびフェーズ2（フォルダ削除時メモゴミ箱移動 & 長押し削除UI統一）が完了。テストは259/259全通過。ビルド正常。フェーズ2のコミット・プッシュ・本番デプロイ検証を実施。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）のフェーズ1〜フェーズ3（スワイプ排他制御、フォルダ削除時ゴミ箱移動＆長押し統一、ゴミ箱完全削除機能）が完了。テストは267/267全通過。ビルド正常。フェーズ3のコミット・プッシュ・本番デプロイ検証を実施。
 
 ---
 
@@ -253,3 +253,34 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/components/FolderList.test.tsx`: 「×」ボタン不在確認、500ms長押し削除確認、キャンセル時スキップ、10px移動時キャンセル、短タップ時選択のテストを追加。
     - `src/App.test.tsx`: メモを含むフォルダ削除時にゴミ箱へメモが移動し元フォルダ名付きでゴミ箱に表示される結合テスト、空フォルダ削除時にメモ警告が出ない結合テストを追加。既存の旧仕様テスト（非空フォルダ削除拒絶）を削除。
 - **結果:** テスト 259/259 全通過、ビルド成功。
+(その後コミット・デプロイ完了: `11f275a`)
+
+### フェーズ3: ゴミ箱の中身を完全削除する機能(完了)
+- **課題:**
+  - 通常のゴミ箱移動はMarkdown frontmatterの `deleted: true` によるソフトデリートであり、GitHubリポジトリにファイルが残り続ける。ローカルのIndexedDBレコードだけでなく、リモートのGitHub上のファイルも物理削除（DELETE）する完全削除機能が必要。
+- **対応:**
+  - `src/lib/db.ts`: `StoredNote` に `pendingPermanentDelete?: boolean` を追加。
+  - `src/lib/sync.ts`:
+    - `DeleteTarget` に `permanent?: boolean` を追加。
+    - `planSync`: `pendingPermanentDelete: true` のノートで `baseSha !== null` かつリモートに存在する場合に `toDelete` (`permanent: true`) へ追加。
+    - `runSync`: `del.permanent` の場合に `github.deleteContent` を呼び出し、ローカルのメモリマップから除外して `permanentlyDeletedIds` に記録。戻り値に `permanentlyDeletedIds` を追加。
+  - `src/lib/fullSync.ts`: `runSync` の戻り値 `permanentlyDeletedIds` を受け取り、`db.notes.bulkDelete(permanentlyDeletedIds)` を実行。戻り値にも `permanentlyDeletedIds` を含めて返す。
+  - `src/components/EditorActionBar.tsx`: `onPermanentDelete?: () => void` propを追加。ゴミ箱内メモ閲覧時の `trash-banner` に「完全に削除」ボタン（`.btn-danger.permanent-delete-btn`）を追加。
+  - `src/index.css`: 赤系の危険動作用スタイル `.btn-danger` を新設。
+  - `src/components/NoteList.tsx`:
+    - `isTrash` でも長押し複数選択を有効化（`if (isTrash) return` を解除）。
+    - ゴミ箱内での複数選択時、バルクバーに「完全に削除」ボタン（`.btn-danger.note-bulk-delete-btn`）のみを表示し、フォルダ移動やゴミ箱移動ボタンは非表示。
+    - `onBulkPermanentDelete?: (ids: string[]) => void` propを追加。
+  - `src/App.tsx`:
+    - `permanentlyDeleteActiveNote`: 単体完全削除ハンドラ。確認ダイアログ（`window.confirm`）後、未同期ノートは即時ローカル削除、同期済みノートは `pendingPermanentDelete: true` をセット。検索インデックスから除去し、オンラインなら即座に同期（`handleSyncNow`）を発火。
+    - `bulkPermanentlyDeleteNotes`: 複数選択の一括完全削除ハンドラ。確認ダイアログ後、同様にローカル削除または予約・同期・インデックス除去。
+    - `applySearchIndexUpdate`: `permanentlyDeletedIds` を受け取れるよう拡張し、同期完了ハンドラ（`syncInBackground` / `handleSyncNow`）から渡して別デバイス発の完全削除も検索索引から確実に除去。
+    - `handleSyncNow` 完了時に `refreshNotesForSelectedFolder()` を追加。
+    - `EditorActionBar` と `NoteList` にハンドラを接続。
+  - テスト拡充:
+    - `src/lib/sync.test.ts`: `planSync` での完全削除振り分け、未同期ノートの除外、`runSync` でのリモートDELETE実行・`permanentlyDeletedIds` 返却のテストを追加。
+    - `src/lib/fullSync.test.ts`: `fullSync` で `pendingPermanentDelete` ノートがリモートDELETEされIndexedDBから完全削除される結合テストを追加。
+    - `src/components/EditorActionBar.test.tsx`: ゴミ箱バナー内の「完全に削除」ボタン表示とクリック時コールバック発火テストを追加。
+    - `src/components/NoteList.test.tsx`: ゴミ箱内での長押し複数選択、バルクバーの「完全に削除」のみ表示、クリック時 `onBulkPermanentDelete` 発火テストを追加。
+    - `src/App.test.tsx`: 未同期メモの即時完全削除、同期済みメモの予約・リモートDELETE・DB完全削除、ゴミ箱での一括完全削除の結合テスト3件を追加。
+- **結果:** テスト 267/267 全通過、ビルド成功。

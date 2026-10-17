@@ -207,5 +207,42 @@ describe('fullSync - 2回目以降(ローカルにデータがある)', () => {
     expect(persisted?.title).toBe('新タイトル')
     expect(persisted?.dirty).toBe(false)
   })
+
+  it('permanently deletes note from IndexedDB and returns permanentlyDeletedIds when pendingPermanentDelete note is synced', async () => {
+    await db.notes.put({
+      id: 'perm-note',
+      title: '完全削除予定メモ',
+      folder: 'ゴミ箱',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00+09:00',
+      updatedAt: '2026-10-15T00:00:00+09:00',
+      deleted: true,
+      llmLinks: [],
+      body: '消える本文',
+      baseSha: 'perm-sha',
+      dirty: true,
+      pendingPermanentDelete: true,
+    })
+
+    const github = githubStub({
+      getTree: vi.fn().mockResolvedValue({
+        tree: [
+          { path: 'folders.json', sha: 'folders-sha' },
+          { path: 'notes/ゴミ箱/perm-note.md', sha: 'perm-sha' },
+        ],
+        truncated: false,
+      }),
+      deleteContent: vi.fn().mockResolvedValue(undefined),
+    })
+
+    const result = await fullSync({ token: 't', owner: 'o', repo: 'r' }, github as never)
+
+    expect(github.deleteContent).toHaveBeenCalledWith('o', 'r', 'notes/ゴミ箱/perm-note.md', 'perm-sha', 't')
+    expect(result.permanentlyDeletedIds).toEqual(['perm-note'])
+    const deletedRecord = await db.notes.get('perm-note')
+    expect(deletedRecord).toBeUndefined()
+  })
 })
+
 
