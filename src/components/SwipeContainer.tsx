@@ -103,14 +103,6 @@ export function SwipeContainer({
     startPos.current = { x: e.clientX, y: e.clientY }
     isDragging.current = false
     isVerticalScroll.current = false
-
-    if (typeof e.currentTarget.setPointerCapture === 'function') {
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId)
-      } catch {
-        // jsdom等の未実装環境対策
-      }
-    }
   }
 
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -144,6 +136,21 @@ export function SwipeContainer({
       isDragging.current = true
       if (gestureLockRef) gestureLockRef.current = 'horizontal'
       rootRef.current?.classList.add('is-dragging')
+
+      // Pointer Captureは、横方向の意図が確定した(=実際にドラッグが始まった)この瞬間に
+      // 初めて取得する。pointerdown直後に即座に取得すると、ただの軽いタップでも
+      // この要素(祖先)がポインタを捕捉してしまい、子要素(メモ行のボタン等)が
+      // 以降のpointermove/pointerup/clickを一切受け取れなくなる
+      // (Pointer Captureは対象となるイベントのtargetを捕捉元要素そのものに固定し、
+      // 子要素はそのイベントの伝播経路から外れるため)。これによりタップが握り
+      // 潰されていた実機不具合があったため、ドラッグ確定時まで取得を遅らせる。
+      if (typeof e.currentTarget.setPointerCapture === 'function') {
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId)
+        } catch {
+          // jsdom等の未実装環境対策
+        }
+      }
     }
 
     const { canLeft, canRight } = resolveCanSwipe()

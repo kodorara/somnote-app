@@ -382,6 +382,55 @@ describe('SwipeContainer', () => {
     expect(lockRef.current).toBe('vertical')
   })
 
+  it('does not acquire pointer capture on pointerdown alone (so a quick tap never reaches it)', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button>Row</button>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    const setPointerCapture = vi.fn()
+    container.setPointerCapture = setPointerCapture
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    expect(setPointerCapture).not.toHaveBeenCalled()
+  })
+
+  it('acquires pointer capture only once a horizontal drag is confirmed', () => {
+    // pointerdown直後に即座にPointer Captureを取得すると、ただの軽いタップでも
+    // 子要素(メモ行のボタン等)がpointerup/clickを受け取れなくなり、実機でタップが
+    // 握り潰される不具合があった。横方向の意図が確定した瞬間にのみ取得すること。
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    const setPointerCapture = vi.fn()
+    container.setPointerCapture = setPointerCapture
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 130, clientY: 102 }) // 横方向優勢
+
+    expect(setPointerCapture).toHaveBeenCalledTimes(1)
+  })
+
+  it('never acquires pointer capture when the gesture resolves to vertical scroll immediately', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    const setPointerCapture = vi.fn()
+    container.setPointerCapture = setPointerCapture
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 105, clientY: 180 }) // 縦方向優勢
+
+    expect(setPointerCapture).not.toHaveBeenCalled()
+  })
+
   it('preserves vertical gestureLockRef when lostpointercapture fires after vertical move', () => {
     const lockRef = { current: 'none' as const }
     render(
