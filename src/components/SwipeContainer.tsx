@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react'
 import type { GestureLockRef } from '../lib/gestureLock'
 
 interface Props {
@@ -49,6 +49,21 @@ export function SwipeContainer({
   const isDragging = useRef<boolean>(false)
   const isVerticalScroll = useRef<boolean>(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
+
+  const prevClassNameRef = useRef(className)
+
+  // 画面遷移(className変更)時に、ドラッグ状態やCSS変数が残存しないよう確実にクリーンアップ
+  useEffect(() => {
+    if (prevClassNameRef.current !== className) {
+      prevClassNameRef.current = className
+      rootRef.current?.style.setProperty('--drag-offset', '0px')
+      rootRef.current?.classList.remove('is-dragging')
+      isDragging.current = false
+      isVerticalScroll.current = false
+      startPos.current = null
+      activePointerId.current = null
+    }
+  }, [className])
 
   const resolveCanSwipe = () => ({
     canLeft: canSwipeLeft ?? !!onSwipeLeft,
@@ -192,7 +207,9 @@ export function SwipeContainer({
   }
 
   const handlePointerCancel = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.pointerId !== activePointerId.current) return
+    if (e.pointerId !== undefined && activePointerId.current !== null && e.pointerId !== activePointerId.current) {
+      return
+    }
     activePointerId.current = null
 
     if (typeof e.currentTarget.releasePointerCapture === 'function') {
@@ -218,6 +235,7 @@ export function SwipeContainer({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handlePointerCancel}
       data-testid="swipe-container"
     >
       {children}

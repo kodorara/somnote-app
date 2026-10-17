@@ -326,4 +326,43 @@ describe('SwipeContainer', () => {
     fireEvent.pointerUp(container, { clientX: 160, clientY: 100 })
     expect(lockRef.current).toBe('none')
   })
+
+  it('resets --drag-offset and removes .is-dragging on lostpointercapture', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('60px')
+    expect(container).toHaveClass('is-dragging')
+
+    fireEvent.lostPointerCapture(container)
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+  })
+
+  it('resets --drag-offset when className changes (screen transition)', () => {
+    const { rerender } = render(
+      <SwipeContainer className="columns mobile-notes" onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('60px')
+
+    rerender(
+      <SwipeContainer className="columns mobile-folders" onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
+    expect(container).not.toHaveClass('is-dragging')
+  })
 })

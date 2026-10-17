@@ -7,7 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）のフェーズ1〜フェーズ3（スワイプ排他制御、フォルダ削除時ゴミ箱移動＆長押し統一、ゴミ箱完全削除機能）が完了。テストは267/267全通過。ビルド正常。フェーズ3のコミット・プッシュ・本番デプロイ検証を実施。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-gesture-trash-folder-improvements.md`）の全4フェーズ（スワイプ排他制御、フォルダ削除時ゴミ箱移動＆長押し統一、ゴミ箱完全削除機能、フォルダ画面右余白・PWAレイアウト修正）の実装・テストが完了。テストは全269件通過。ビルド正常。フェーズ4のコミット・プッシュ・本番デプロイ検証を実施。
 
 ---
 
@@ -284,3 +284,25 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/components/NoteList.test.tsx`: ゴミ箱内での長押し複数選択、バルクバーの「完全に削除」のみ表示、クリック時 `onBulkPermanentDelete` 発火テストを追加。
     - `src/App.test.tsx`: 未同期メモの即時完全削除、同期済みメモの予約・リモートDELETE・DB完全削除、ゴミ箱での一括完全削除の結合テスト3件を追加。
 - **結果:** テスト 267/267 全通過、ビルド成功。
+(その後コミット・デプロイ完了: `e038f27`、Actions Run `39017115086`、本番ライブ動作確認済み)
+
+### フェーズ4: フォルダ画面の右余白の調査・修正(完了)
+- **原因の特定（ユーザーヒアリング・PWA実機挙動）:**
+  - ユーザー環境: Android端末（Zenfone 10）、画面は縦向き、ホーム画面に追加したPWA（standalone全画面）で起動。
+  - 現象: 操作してもずっと左1/4に縮んだままで自然には戻らない。
+  - 根本原因:
+    1. デスクトップ用CSSで `.col-folders` に `flex: 0 0 220px;`（幅220px固定）が指定されていたが、モバイルメディアクエリ（`@media (max-width: 768px)`）内では親の `.columns` が `display: flex;` のままだった。
+    2. Android PWA (standalone) モードや特定の Chromium レンダリングにおいて、flexコンテナ内の `position: absolute; inset: 0;` 要素に対して明示的な `width: 100%` や `flex: none` がないと、包含ブロックやデスクトップ時の `flex-basis: 220px` が干渉し、コンテンツ幅が約220px（画面幅の約1/4）に縮んでしまう。
+    3. また、PWA standalone 全画面表示時のノッチ/パンチホール（Zenfone 10は左上）に対する `env(safe-area-inset-left)` の余白指定がなく、左端の角丸が切れていた。
+- **対応:**
+  - `src/App.css`:
+    - モバイルメディアクエリ（`@media (max-width: 768px)`）内の `.columns` に `display: block; width: 100%; height: 100%;` を指定し、親の flexbox の干渉を完全に遮断。
+    - `.col-folders, .col-notes, .col-editor` に明示的に `width: 100%; height: 100%; max-width: 100%; flex: none; border-right: none; box-sizing: border-box;` を指定し、デスクトップ用の 220px 固定幅や境界線を完全に無効化。
+    - `.folder-list-wrap` に `padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);` を追加し、パンチホールや全画面端での見切れを防止。
+  - `src/components/SwipeContainer.tsx`:
+    - 画面遷移（`className` 変更）時にドラッグオフセットや状態を安全にリセットする `useEffect` を追加。
+    - Android のシステムジェスチャー（戻る等）でポインタキャプチャを奪われた際にも確実にドラッグオフセットを0pxにリセットするよう `onLostPointerCapture={handlePointerCancel}` を追加。
+    - `handlePointerCancel` で `pointerId` が undefined のキャプチャ喪失イベントでも安全にリセットするよう条件を緩和。
+  - テスト拡充:
+    - `src/components/SwipeContainer.test.tsx`: `lostpointercapture` によるオフセットリセット確認テスト、`className` 遷移時のオフセットリセット確認テストの2件を追加。
+- **結果:** テスト 269/269 全通過、ビルド成功。
