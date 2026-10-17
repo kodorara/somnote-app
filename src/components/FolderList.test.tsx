@@ -99,6 +99,24 @@ describe('FolderList', () => {
     expect(screen.getByRole('button', { name: 'フォルダ削除' })).toBeInTheDocument()
   })
 
+  it('allows selecting multiple folders in delete mode and calls onBulkDelete with all selected folders', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onBulkDelete = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onBulkDelete={onBulkDelete} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '前ノート' }))
+    fireEvent.click(screen.getByRole('button', { name: '仕事' }))
+
+    const confirmDeleteBtn = screen.getByRole('button', { name: '選択したフォルダを削除' })
+    expect(confirmDeleteBtn).toHaveTextContent('削除 (2)')
+
+    fireEvent.click(confirmDeleteBtn)
+    expect(confirmSpy).toHaveBeenCalledWith('選択した2件のフォルダ（前ノート、仕事）を削除しますか？')
+    expect(onBulkDelete).toHaveBeenCalledWith([folders[0], folders[1]])
+    expect(screen.getByRole('button', { name: 'フォルダ削除' })).toBeInTheDocument()
+  })
+
   it('cancels folder delete mode without calling onDelete when キャンセル is clicked or confirmation is declined', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const onDelete = vi.fn()

@@ -611,31 +611,41 @@ export default function App() {
     }
   }
 
-  const handleDeleteFolder = async (folder: StoredFolder) => {
+  const handleBulkDeleteFolders = async (targetFolders: StoredFolder[]) => {
+    if (targetFolders.length === 0) return
     setFolderError(null)
-    const notesInFolder = await db.notes.where('folder').equals(folder.name).toArray()
-    const activeCount = notesInFolder.filter((n) => !n.deleted).length
+    const folderNameSet = new Set(targetFolders.map((f) => f.name))
+    const folderIdSet = new Set(targetFolders.map((f) => f.folderId))
 
-    if (activeCount > 0) {
-      const confirmed = window.confirm(
-        `「${folder.name}」を削除しますか？含まれる${activeCount}件のメモはゴミ箱に移動されます。`,
-      )
+    const allNotes = await db.notes.toArray()
+    const activeNoteIds = allNotes
+      .filter((n) => !n.deleted && folderNameSet.has(n.folder ?? ''))
+      .map((n) => n.id)
+
+    if (activeNoteIds.length > 0) {
+      const warningMsg =
+        targetFolders.length === 1
+          ? `「${targetFolders[0].name}」を削除しますか？含まれる${activeNoteIds.length}件のメモはゴミ箱に移動されます。`
+          : `選択した${targetFolders.length}件のフォルダを削除しますか？含まれる${activeNoteIds.length}件のメモはゴミ箱に移動されます。`
+      const confirmed = window.confirm(warningMsg)
       if (!confirmed) return
     }
 
     resetSearch()
-    if (activeCount > 0) {
-      await bulkDeleteNotes(notesInFolder.filter((n) => !n.deleted).map((n) => n.id))
+    if (activeNoteIds.length > 0) {
+      await bulkDeleteNotes(activeNoteIds)
     }
     try {
-      await deleteFolder(folder)
+      for (const folder of targetFolders) {
+        await deleteFolder(folder)
+      }
     } catch (err) {
       setFolderError(err instanceof Error ? err.message : String(err))
       return
     }
-    const remaining = folders.filter((f) => f.folderId !== folder.folderId)
+    const remaining = folders.filter((f) => !folderIdSet.has(f.folderId))
     setFolders(remaining)
-    if (selectedFolder === folder.name) {
+    if (selectedFolder && folderNameSet.has(selectedFolder)) {
       const next = remaining[0]
       if (next) {
         updateSelectedFolder(next.name)
@@ -652,6 +662,10 @@ export default function App() {
         setFolderError(err instanceof Error ? err.message : String(err))
       }
     }
+  }
+
+  const handleDeleteFolder = async (folder: StoredFolder) => {
+    await handleBulkDeleteFolders([folder])
   }
 
   const runGlobalSearch = async (query: string) => {
@@ -853,6 +867,7 @@ export default function App() {
               }}
               onCreate={handleCreateFolder}
               onDelete={handleDeleteFolder}
+              onBulkDelete={handleBulkDeleteFolders}
               onReorder={handleReorderFolders}
               onOpenSettings={() => setIsSettingsOpen(true)}
               onSync={handlePullToRefresh}

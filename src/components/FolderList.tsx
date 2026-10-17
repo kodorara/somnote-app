@@ -10,6 +10,7 @@ interface Props {
   onSelect: (folderName: string) => void
   onCreate: (name: string) => void
   onDelete: (folder: StoredFolder) => void
+  onBulkDelete?: (folders: StoredFolder[]) => void
   onReorder: (orderedFolderIds: string[]) => void
   trashCount?: number
   noteCounts?: Record<string, number>
@@ -40,6 +41,7 @@ export function FolderList({
   onSelect,
   onCreate,
   onDelete,
+  onBulkDelete,
   onReorder,
   trashCount,
   noteCounts,
@@ -50,7 +52,7 @@ export function FolderList({
 }: Props) {
   const [newName, setNewName] = useState('')
   const [deleteMode, setDeleteMode] = useState(false)
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [deleteTargetIds, setDeleteTargetIds] = useState<Set<string>>(new Set())
 
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const draggingId = useRef<string | null>(null)
@@ -60,22 +62,43 @@ export function FolderList({
   const baseOrder = sortedBySeq(folders).map((f) => f.folderId)
   const order = dragOrder ?? baseOrder
 
-  const deleteTarget = deleteTargetId ? byId.get(deleteTargetId) ?? null : null
+  const deleteTargets = order
+    .map((id) => byId.get(id))
+    .filter((f): f is StoredFolder => !!f && deleteTargetIds.has(f.folderId))
 
   const enterDeleteMode = () => {
     setDeleteMode(true)
-    setDeleteTargetId(null)
+    setDeleteTargetIds(new Set())
   }
 
   const exitDeleteMode = () => {
     setDeleteMode(false)
-    setDeleteTargetId(null)
+    setDeleteTargetIds(new Set())
+  }
+
+  const toggleDeleteTarget = (folderId: string) => {
+    setDeleteTargetIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
   }
 
   const handleConfirmDelete = () => {
-    if (!deleteTarget) return
-    if (window.confirm(`「${deleteTarget.name}」を削除しますか？`)) {
-      onDelete(deleteTarget)
+    if (deleteTargets.length === 0) return
+    const message =
+      deleteTargets.length === 1
+        ? `「${deleteTargets[0].name}」を削除しますか？`
+        : `選択した${deleteTargets.length}件のフォルダ（${deleteTargets.map((f) => f.name).join('、')}）を削除しますか？`
+    if (window.confirm(message)) {
+      if (onBulkDelete) {
+        onBulkDelete(deleteTargets)
+      } else {
+        for (const folder of deleteTargets) {
+          onDelete(folder)
+        }
+      }
       exitDeleteMode()
     }
   }
@@ -137,7 +160,7 @@ export function FolderList({
         {order.map((id) => {
           const f = byId.get(id)
           if (!f) return null
-          const isDeleteSelected = deleteMode && deleteTargetId === f.folderId
+          const isDeleteSelected = deleteMode && deleteTargetIds.has(f.folderId)
           return (
             <li
               key={f.folderId}
@@ -166,7 +189,7 @@ export function FolderList({
                 aria-pressed={deleteMode ? isDeleteSelected : undefined}
                 onClick={() => {
                   if (deleteMode) {
-                    setDeleteTargetId((prev) => (prev === f.folderId ? null : f.folderId))
+                    toggleDeleteTarget(f.folderId)
                   } else {
                     onSelect(f.name)
                   }
@@ -242,11 +265,11 @@ export function FolderList({
               type="button"
               className="folder-settings-btn folder-delete-confirm-btn"
               aria-label="選択したフォルダを削除"
-              disabled={!deleteTarget}
+              disabled={deleteTargets.length === 0}
               onClick={handleConfirmDelete}
             >
               <TrashIcon size={16} />
-              <span>削除</span>
+              <span>{deleteTargets.length > 0 ? `削除 (${deleteTargets.length})` : '削除'}</span>
             </button>
           </>
         ) : (
