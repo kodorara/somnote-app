@@ -478,6 +478,42 @@ describe('SwipeContainer', () => {
     expect(onRowClick).not.toHaveBeenCalled()
   })
 
+  it('does not lock a direction (or move --drag-offset) for sub-deadzone jitter', () => {
+    // 指の腹が潰れることによる1〜数pxの微動だけで、誤って縦/横の方向を
+    // 確定させてしまわないよう、一定の遊び(デッドゾーン)を設けている。
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 103, clientY: 102 }) // hypot ≈ 3.6px (<6px)
+
+    expect(container.style.getPropertyValue('--drag-offset')).toBe('')
+    expect(container).not.toHaveClass('is-dragging')
+  })
+
+  it('still manually dispatches a click when a jittery gesture exceeded the deadzone mid-way but settled back near the start', () => {
+    // デッドゾーンを一瞬超えて方向ロックされても(wasDragging/wasVerticalがtrueに
+    // なっても)、最終的に指がほぼ元の位置に戻って離された場合は、タップとして
+    // clickを転送する(指の震えで本来のタップが握り潰されないようにするため)。
+    const onRowClick = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <button onClick={onRowClick}>Row</button>
+      </SwipeContainer>,
+    )
+    const button = screen.getByRole('button', { name: 'Row' })
+
+    fireEvent.pointerDown(button, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(button, { clientX: 108, clientY: 100 }) // デッドゾーン(6px)を超えて横ロック
+    fireEvent.pointerUp(button, { clientX: 101, clientY: 100 }) // 最終的にほぼ元の位置へ戻って離す
+
+    expect(onRowClick).toHaveBeenCalledTimes(1)
+  })
+
   it('preserves vertical gestureLockRef when lostpointercapture fires after vertical move', () => {
     const lockRef = { current: 'none' as const }
     render(

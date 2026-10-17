@@ -23,6 +23,10 @@ const EDGE_ZONE_PX = 24
 // NoteList/FolderList等の既存のMOVE_CANCEL_PXと同じ考え方の値。
 const TAP_TOLERANCE_PX = 10
 
+// 縦/横の方向がまだ確定していない間、方向ロックの判定を保留する遊び幅。
+// Chromiumのネイティブtouch slop(8px)よりやや小さい値。
+const DIRECTION_LOCK_SLOP_PX = 6
+
 // targetからroot(SwipeContainer自身)までの祖先を辿り、横方向にスクロール可能な
 // 要素(コードブロックや幅の広い表など)があるかを調べる。固定クラス名のホワイト
 // リストと違い、将来追加されるどんな横スクロール要素にも後付け対応不要で効く。
@@ -171,6 +175,15 @@ export function SwipeContainer({
     const rawDeltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
 
+    // 方向(縦/横)がまだ確定していない間は、指の腹が潰れることによる1px程度の
+    // 微動だけで誤って方向ロックしてしまわないよう、一定の遊び(デッドゾーン)を
+    // 設ける。このデッドゾーン内の移動では--drag-offsetも更新しない(視覚的にも
+    // 指に追従しない)。一度方向が確定した(isDragging/isVerticalScrollがtrueに
+    // なった)後は、このチェックをスキップしてそのまま追従を続ける。
+    if (!isDragging.current && Math.hypot(rawDeltaX, deltaY) < DIRECTION_LOCK_SLOP_PX) {
+      return
+    }
+
     // 縦スクロールと判定される場合はスワイプをキャンセルし、オフセットをリセット
     if (Math.abs(deltaY) > Math.abs(rawDeltaX)) {
       isVerticalScroll.current = true
@@ -233,7 +246,6 @@ export function SwipeContainer({
     const deltaX = e.clientX - startPos.current.x
     const deltaY = e.clientY - startPos.current.y
     const wasVertical = isVerticalScroll.current
-    const wasDragging = isDragging.current
     const tapTarget = tapTargetRef.current
     startPos.current = null
     isDragging.current = false
@@ -250,7 +262,12 @@ export function SwipeContainer({
     // 奪われてしまっているため、本来のタップ先へ手動でclickを転送する。これにより
     // 複数選択モード中の2件目以降のタップ等、子要素のonClickに依存する機能が
     // Pointer Captureによって握り潰されずに機能する。
-    if (!wasDragging && !wasVertical && tapTarget && Math.hypot(deltaX, deltaY) <= TAP_TOLERANCE_PX) {
+    // 判定は最終的な正味の移動量(デッドゾーン通過後に行ったり来たりして結局
+    // ほぼ同じ位置に戻った場合も含む)のみで行う。ただし縦スクロールと判定
+    // された場合(wasVertical)は、その時点でPointer Captureを解放済みであり、
+    // ブラウザの純正clickが既に本来の要素へ届いている可能性があるため、
+    // 二重発火を避けるためここでは転送しない。
+    if (!wasVertical && tapTarget && Math.hypot(deltaX, deltaY) <= TAP_TOLERANCE_PX) {
       tapTarget.click()
     }
 

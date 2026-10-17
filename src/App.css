@@ -61,6 +61,10 @@
   flex: 1;
   min-height: 0;
   overscroll-behavior: none;
+  /* 縦方向のネイティブスクロール(pan-y)はブラウザに任せ、横方向はブラウザが
+     勝手にジェスチャー候補として介入しないようにする。JS側(SwipeContainer)の
+     横スワイプ判定と競合しないようにするため。 */
+  touch-action: pan-y;
 }
 
 .col-folders {

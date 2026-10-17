@@ -142,6 +142,26 @@ describe('FolderList', () => {
     vi.useRealTimers()
   })
 
+  it('cancels a pending long-press timer when a window scroll event fires (ancestor holds pointer capture so onPointerMove may not)', () => {
+    vi.useFakeTimers()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onDelete = vi.fn()
+    render(<FolderList {...baseProps} folders={folders} onDelete={onDelete} />)
+
+    const folderBtn = screen.getByRole('button', { name: '仕事' })
+    fireEvent.pointerDown(folderBtn, { clientX: 100, clientY: 100 })
+
+    window.dispatchEvent(new Event('scroll'))
+
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(onDelete).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
   it('selects folder on short tap without triggering long-press', () => {
     vi.useFakeTimers()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)

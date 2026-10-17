@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
 import type { GestureLockRef } from '../lib/gestureLock'
@@ -87,6 +87,17 @@ export function NoteList({
       longPressTimerRef.current = null
     }
   }
+
+  // ネイティブスクロールは(祖先がPointer Captureを保持している間は特に)このボタン
+  // 自身のonPointerMoveを経由しないことがあるため、windowのscrollイベント(バブリング
+  // しないのでcaptureフェーズで拾う)を監視し、スクロールが起きたら問答無用で長押し
+  // タイマーを破棄する。gestureLockRefのチェック(タイマー発火時点)と二重の安全策。
+  useEffect(() => {
+    const handleScroll = () => clearLongPressTimer()
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    return () => window.removeEventListener('scroll', handleScroll, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -252,6 +263,7 @@ export function NoteList({
               onPointerUp={(e) => handlePointerUp(e, n.id)}
               onPointerCancel={handlePointerCancel}
               onClick={() => handleRowClick(n.id)}
+              onContextMenu={(e) => e.preventDefault()}
             >
               {multiSelectMode && (
                 <span className={`note-select-indicator ${selectedIds.has(n.id) ? 'is-checked' : ''}`} aria-hidden="true">

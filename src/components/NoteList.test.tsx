@@ -208,6 +208,21 @@ describe('NoteList', () => {
       expect(onSelect).not.toHaveBeenCalled()
     })
 
+    it('cancels a pending long-press timer when a window scroll event fires (ancestor holds pointer capture so onPointerMove may not)', () => {
+      render(<NoteList {...defaultProps} notes={notes} folders={folders} />)
+      const row = screen.getByText('先に書いたメモ')
+      fireEvent.pointerDown(row, { clientX: 100, clientY: 100 })
+
+      window.dispatchEvent(new Event('scroll'))
+
+      act(() => {
+        vi.advanceTimersByTime(1500)
+      })
+      fireEvent.pointerUp(row, { clientX: 100, clientY: 100 })
+
+      expect(screen.queryByText(/件選択中/)).not.toBeInTheDocument()
+    })
+
     it('does not enter multi-select mode on a quick tap (release before the long-press threshold)', () => {
       const onSelect = vi.fn()
       render(<NoteList {...defaultProps} notes={notes} onSelect={onSelect} folders={folders} />)

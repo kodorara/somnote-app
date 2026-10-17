@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
 import type { GestureLockRef } from '../lib/gestureLock'
@@ -65,6 +65,17 @@ export function FolderList({
       longPressTimerRef.current = null
     }
   }
+
+  // ネイティブスクロールは(祖先がPointer Captureを保持している間は特に)このボタン
+  // 自身のonPointerMoveを経由しないことがあるため、windowのscrollイベント(バブリング
+  // しないのでcaptureフェーズで拾う)を監視し、スクロールが起きたら問答無用で長押し
+  // タイマーを破棄する。gestureLockRefのチェック(タイマー発火時点)と二重の安全策。
+  useEffect(() => {
+    const handleScroll = () => clearLongPressTimer()
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    return () => window.removeEventListener('scroll', handleScroll, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleRowPointerDown = (e: ReactPointerEvent<HTMLButtonElement>, folder: StoredFolder) => {
     pointerStartRef.current = { x: e.clientX, y: e.clientY }
@@ -192,6 +203,7 @@ export function FolderList({
                 onPointerUp={handleRowPointerUp}
                 onPointerCancel={handleRowPointerUp}
                 onClick={() => handleRowClick(f)}
+                onContextMenu={(e) => e.preventDefault()}
               >
                 <span className="folder-dot" style={{ background: f.color }} aria-hidden="true" />
                 <span className="folder-name">{f.name}</span>
