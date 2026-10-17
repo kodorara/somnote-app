@@ -319,3 +319,4 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - `src/components/FolderList.test.tsx`: 500msから1000msへのタイマー期待値更新（999msで発火せず、1000msで発火）。
     - `src/App.test.tsx`: `folder deletion and moving notes to trash` describeブロック内の `longPress` ヘルパー待機時間を 550ms から 1050ms へ更新。
 - **結果:** テスト 269/269 全通過、ビルド成功。
+(その後コミット・デプロイ完了: `3582649`、Actions Run `39022962329`、本番ライブ動作確認済み)
