@@ -362,6 +362,14 @@
 }
 .editor .preview h1 { font-size: 21px; margin: var(--space-3) 0; }
 .editor .preview h2 { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-400); margin: var(--space-3) 0; }
+.preview-error {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
 
 /* — editor action bar (固定アクションバー) — */
 .editor-action-bar-container {

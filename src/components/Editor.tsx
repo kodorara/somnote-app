@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { HighlightText } from './HighlightText'
+import { PreviewErrorBoundary } from './PreviewErrorBoundary'
 
 const ReactMarkdown = lazy(() => import('react-markdown'))
 
@@ -69,9 +70,11 @@ export function Editor({ body, onChange, highlightQuery, mode: externalMode, onM
         <textarea aria-label="本文" value={body} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <div className="preview">
-          <Suspense fallback={null}>
-            <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
-          </Suspense>
+          <PreviewErrorBoundary onFallbackToEdit={() => (onModeChange ? onModeChange('edit') : setInternalMode('edit'))}>
+            <Suspense fallback={null}>
+              <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
+            </Suspense>
+          </PreviewErrorBoundary>
         </div>
       )}
     </div>

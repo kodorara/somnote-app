@@ -8,7 +8,7 @@
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
 **現在の状態:** 本番URL https://kodorara.github.io/somnote-app/ にデプロイ済み。
-テストは243/243全通過。ビルド正常。新計画書（`2026-10-17-somnote-app-startup-swipe-performance.md`）の全フェーズ（フェーズ1〜4）完了。
+テストは247/247全通過。ビルド正常。レビュー指摘修正指示書（`2026-10-17-review-result-startup-swipe-performance.md`）のフェーズA（必須3件）完了。
 
 ---
 
@@ -166,4 +166,20 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
     - モバイル表示時の各カラム要素（`.col-folders, .col-notes, .col-editor`）に `will-change: transform` を追加。一部のAndroid Chrome等におけるスワイプ開始時の初回コンポジット処理を軽量化。
   - push並列化の見送り判断:
     - `src/lib/sync.ts` の `runSync` 内でのpush逐次実行は、更新順序の維持および422エラー自己修復リトライの安全性を優先し、計画書の推奨通り「対応不要（見送り）」と判断。
+
+## 9. 起動・スワイプ改善 レビュー指摘修正（2026-10-17）
+
+### フェーズA: 必須修正3件(完了)
+- **A-1: スワイプ中の縦スクロール判定時 Pointer Capture 解放**
+  - `src/components/SwipeContainer.tsx`: 縦スクロールと判定した時点で `releasePointerCapture` を呼び出し、ポインタがコンテナに拘束され続ける問題を修正。
+  - テスト拡充 (`src/components/SwipeContainer.test.tsx`): 縦スクロール判定時に `releasePointerCapture` が呼ばれるテストを追加。
+- **A-2: PreviewErrorBoundary の新設と Editor.tsx への組み込み**
+  - `src/components/PreviewErrorBoundary.tsx`: `React.lazy` 動的インポート失敗時にアプリ全体が白画面クラッシュするのを防ぐ小さなクラスベースErrorBoundaryを新設（フォールバックUIと編集画面復帰ボタンを提供）。
+  - `src/components/Editor.tsx`: `<Suspense>` を `<PreviewErrorBoundary>` でラップ。
+  - `src/App.css`: `.preview-error` スタイルを追加。
+  - テスト追加 (`src/components/PreviewErrorBoundary.test.tsx`): エラー捕捉と編集画面戻るボタン押下時のコールバック実行を検証。
+- **A-3: フォルダ切替直後の selectedFolderRef 競合窓の解消**
+  - `src/App.tsx`: `updateSelectedFolder` ヘルパーを新設し、state（`setSelectedFolder`）と `selectedFolderRef.current` を同期的・アトミックに同時更新。全6箇所の直接代入・state更新を統一。
+  - テスト追加 (`src/App.test.tsx`): フォルダ選択直後にバックグラウンド同期が完了しても新フォルダのメモ一覧が正しく取得・表示される回帰テストを追加。
+- **結果:** テスト 247/247 全通過、ビルド成功。
 

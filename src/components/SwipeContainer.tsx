@@ -102,6 +102,13 @@ export function SwipeContainer({
         rootRef.current?.classList.remove('is-dragging')
         isDragging.current = false
       }
+      if (typeof e.currentTarget.releasePointerCapture === 'function') {
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId)
+        } catch {
+          // jsdom等の未実装環境対策
+        }
+      }
       return
     }
 

@@ -211,6 +211,22 @@ describe('SwipeContainer', () => {
     expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
   })
 
+  it('releases pointer capture when vertical scroll becomes dominant during pointermove', () => {
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    const releasePointerCapture = vi.fn()
+    container.releasePointerCapture = releasePointerCapture
+
+    fireEvent.pointerDown(container, { pointerId: 42, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { pointerId: 42, clientX: 105, clientY: 180 }) // 縦スクロール優勢
+
+    expect(releasePointerCapture).toHaveBeenCalledWith(42)
+  })
+
   it('resets --drag-offset and removes .is-dragging on pointercancel', () => {
     render(
       <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()}>

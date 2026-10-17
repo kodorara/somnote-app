@@ -7,9 +7,9 @@
 ## 1. 最初にやること
 
 1. このファイル(`HANDOVER.md`)を最後まで読む
-2. **現在着手すべき計画書を読む: `../docs/superpowers/plans/2026-10-17-somnote-app-startup-swipe-performance.md`**
-   (このリポジトリの1つ上の階層、`cc-secretary/docs/superpowers/plans/`配下。元の7フェーズ計画`2026-10-15-somnote-app-ux-overhaul.md`は完済み・履歴として残してあるのみで、今着手すべきものではない。`docs/superpowers/plans/`配下に複数の計画書がある場合は、常に**日付が最新のもの**を現在の作業対象とすること)
-3. 計画書の「フェーズ1」から順番に、1フェーズずつ着手する。**複数フェーズを並行して進めない。** 1フェーズ完了→検証→ユーザー報告、を終えてから次のフェーズに進む。
+2. **現在着手すべき指示書を読む: `../docs/superpowers/plans/2026-10-17-review-result-startup-swipe-performance.md`**
+   (このリポジトリの1つ上の階層、`cc-secretary/docs/superpowers/plans/`配下。これは「起動・スワイプ パフォーマンス改善」実装(`2026-10-17-somnote-app-startup-swipe-performance.md`、`434b7e9`〜`45613ae`)に対するClaude Codeのコードレビュー結果・修正指示書で、実装自体は完了済み。元の7フェーズ計画`2026-10-15-somnote-app-ux-overhaul.md`も完済み・履歴として残してあるのみ。`docs/superpowers/plans/`配下に複数のファイルがある場合は、常に**日付(同日の場合はファイル名の種類: plan→review-request→review-result の順)が最新のもの**を現在の作業対象とすること)
+3. 指示書の「フェーズA」(必須3件)から順番に、1件ずつ着手する。**複数フェーズを並行して進めない。** 1フェーズ完了→検証→ユーザー報告、を終えてから次のフェーズに進む。
 4. 作業前に `git log --oneline -15` で直近のコミット履歴を見て、コミットメッセージの文体(日本語、`type: 概要`形式)に合わせる。
 
 ---

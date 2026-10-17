@@ -119,6 +119,83 @@ describe('App startup', () => {
     // 同期完了後も、ユーザーが入力した下書きが空下書きで上書きされていないこと
     expect(textarea).toHaveValue('ユーザーが書き始めた重要な下書き')
   })
+
+  it('updates selectedFolderRef immediately upon folder selection to prevent race conditions during background sync', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    // フォルダ2つ作成
+    await db.folders.clear()
+    await db.folders.bulkPut([
+      { folderId: 'f1', name: '日常', color: '#ff0000', seq: 0 },
+      { folderId: 'f2', name: '仕事', color: '#00ff00', seq: 1 },
+    ])
+    await db.notes.clear()
+    await db.notes.bulkPut([
+      {
+        id: 'n1',
+        title: '日常メモ',
+        body: '日常の内容',
+        folder: '日常',
+        tags: [],
+        baseSha: null,
+        seq: 0,
+        llmLinks: [],
+        createdAt: '2026-10-17T00:00:00Z',
+        updatedAt: '2026-10-17T00:00:00Z',
+        deleted: false,
+        dirty: false,
+      },
+      {
+        id: 'n2',
+        title: '仕事メモ',
+        body: '仕事の内容',
+        folder: '仕事',
+        tags: [],
+        baseSha: null,
+        seq: 0,
+        llmLinks: [],
+        createdAt: '2026-10-17T00:00:00Z',
+        updatedAt: '2026-10-17T00:00:00Z',
+        deleted: false,
+        dirty: false,
+      },
+    ])
+
+    let resolveTree: (val: { tree: never[]; truncated: boolean }) => void = () => {}
+    const treePromise = new Promise<{ tree: never[]; truncated: boolean }>((resolve) => {
+      resolveTree = resolve
+    })
+    vi.spyOn(githubClient, 'getTree').mockReturnValue(treePromise)
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    // フォルダ一覧画面へ移動
+    const swipeContainer = screen.getByTestId('swipe-container')
+    fireEvent.pointerDown(swipeContainer, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(swipeContainer, { clientX: 200, clientY: 100 })
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    fireEvent.pointerDown(swipeContainer, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(swipeContainer, { clientX: 200, clientY: 100 })
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
+
+    // 「仕事」フォルダを選択する
+    const selectButtons = container.querySelectorAll('.folder-select-btn')
+    const workFolderBtn = selectButtons[1] as HTMLElement
+    expect(workFolderBtn).toBeTruthy()
+    fireEvent.click(workFolderBtn)
+
+    // バックグラウンド同期がこの瞬間に完了したとする
+    await act(async () => {
+      resolveTree({ tree: [], truncated: false })
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    // 同期完了の一覧更新が古いフォルダ(日常)ではなく新フォルダ(仕事)のメモ一覧を表示していること
+    await waitFor(() => {
+      expect(screen.getByText('仕事メモ')).toBeInTheDocument()
+      expect(screen.queryByText('日常メモ')).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('mobile swipe navigation', () => {

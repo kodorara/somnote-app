@@ -35,6 +35,10 @@ export default function App() {
   const [folders, setFolders] = useState<StoredFolder[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const selectedFolderRef = useRef<string | null>(null)
+  const updateSelectedFolder = (name: string | null) => {
+    selectedFolderRef.current = name
+    setSelectedFolder(name)
+  }
   const [notes, setNotes] = useState<StoredNote[]>([])
   const [trashCount, setTrashCount] = useState(0)
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({})
@@ -171,8 +175,7 @@ export default function App() {
     // フォルダの並び替え(上下ボタン)で、どのフォルダを起動時の既定にするか選べる。
     const folder = topFolder(allFolders)
     if (!folder) return
-    setSelectedFolder(folder.name)
-    selectedFolderRef.current = folder.name
+    updateSelectedFolder(folder.name)
 
     const folderNotes = await db.notes.where('folder').equals(folder.name).toArray()
     setNotes(folderNotes)
@@ -423,7 +426,7 @@ export default function App() {
       restored.folder = targetFolder
       await db.notes.put(restored)
     }
-    setSelectedFolder(targetFolder)
+    updateSelectedFolder(targetFolder)
     const folderNotes = await db.notes.where('folder').equals(targetFolder).toArray()
     setNotes(folderNotes)
     setActiveNote(restored)
@@ -567,10 +570,10 @@ export default function App() {
     if (selectedFolder === folder.name) {
       const next = remaining[0]
       if (next) {
-        setSelectedFolder(next.name)
+        updateSelectedFolder(next.name)
         setNotes(await db.notes.where('folder').equals(next.name).toArray())
       } else {
-        setSelectedFolder(null)
+        updateSelectedFolder(null)
         setNotes([])
       }
     }
@@ -763,7 +766,7 @@ export default function App() {
               onSelect={async (name) => {
                 await leaveEditor()
                 resetSearch()
-                setSelectedFolder(name)
+                updateSelectedFolder(name)
                 if (isTrashFolder(name)) {
                   setNotes(await db.notes.filter((n) => !!n.deleted).toArray())
                 } else {
@@ -826,7 +829,7 @@ export default function App() {
                 const n = await db.notes.get(id)
                 if (n) {
                   if (!n.deleted && selectedFolder !== n.folder) {
-                    setSelectedFolder(n.folder)
+                    updateSelectedFolder(n.folder)
                     setNotes(await db.notes.where('folder').equals(n.folder).toArray())
                   }
                   setActiveNote(n)
