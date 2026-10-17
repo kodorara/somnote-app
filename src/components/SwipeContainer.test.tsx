@@ -365,4 +365,42 @@ describe('SwipeContainer', () => {
     expect(container.style.getPropertyValue('--drag-offset')).toBe('0px')
     expect(container).not.toHaveClass('is-dragging')
   })
+
+  it('does not reset gestureLockRef on release if locked by another gesture (vertical)', () => {
+    const lockRef = { current: 'vertical' as const }
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()} gestureLockRef={lockRef}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 160, clientY: 100 })
+    fireEvent.pointerUp(container, { clientX: 160, clientY: 100 })
+
+    expect(lockRef.current).toBe('vertical')
+  })
+
+  it('preserves vertical gestureLockRef when lostpointercapture fires after vertical move', () => {
+    const lockRef = { current: 'none' as const }
+    render(
+      <SwipeContainer onSwipeLeft={vi.fn()} onSwipeRight={vi.fn()} gestureLockRef={lockRef}>
+        <div>Content</div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+
+    // 下方向優勢なポインタ移動(deltaY = 50 > deltaX = 10)
+    // SwipeContainerはvertical判定し、lockRef.current = 'vertical'にし、releasePointerCaptureを呼ぶ
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(container, { clientX: 110, clientY: 150 })
+    expect(lockRef.current).toBe('vertical')
+
+    // releasePointerCaptureによってlostpointercaptureが発火
+    fireEvent(container, new Event('lostpointercapture', { bubbles: true }))
+
+    // lockRef.currentが'vertical'のまま保持されていること(横方向のみ解除するガードが効いている)
+    expect(lockRef.current).toBe('vertical')
+  })
 })

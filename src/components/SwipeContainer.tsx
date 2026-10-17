@@ -189,7 +189,7 @@ export function SwipeContainer({
     // 指を離した瞬間にオフセットを0に戻し、transitionによるスナップまたはスナップバックを発動させる
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
-    if (gestureLockRef) gestureLockRef.current = 'none'
+    if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'
 
     if (wasVertical || Math.abs(deltaY) > Math.abs(deltaX)) {
       return
@@ -224,7 +224,7 @@ export function SwipeContainer({
     isVerticalScroll.current = false
     rootRef.current?.style.setProperty('--drag-offset', '0px')
     rootRef.current?.classList.remove('is-dragging')
-    if (gestureLockRef) gestureLockRef.current = 'none'
+    if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'
   }
 
   return (

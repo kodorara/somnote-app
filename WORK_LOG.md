@@ -7,7 +7,7 @@
 - 実装計画(7フェーズの元計画、2026-10-15策定): `../docs/superpowers/plans/2026-10-15-somnote-app-ux-overhaul.md`
 - 環境・既知の罠・作業手順: `./HANDOVER.md`(本ファイルと同じディレクトリ)
 
-**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`）のフェーズ1（フォルダ削除待ち時間1秒化）およびフェーズ2（ゴミ箱・メモ一覧で2件目以降タップ選択化）の実装・テストが完了。テスト全271件通過。ビルド正常。フェーズ2のコミット・プッシュ・本番デプロイ検証を実施予定。
+**現在の状態:** 新計画書（`../docs/superpowers/plans/2026-10-17-mobile-pwa-feedback-fixes.md`）のフェーズ1（フォルダ削除待ち時間1秒化）、フェーズ2（ゴミ箱・メモ一覧で2件目以降タップ選択化）、フェーズ3（プルトゥリフレッシュの復旧）の実装・テストが完了。テスト全274件通過。ビルド正常。フェーズ3のコミット・プッシュ・本番デプロイ検証を実施予定。
 
 ---
 
@@ -337,3 +337,21 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
       - 移動量が閾値（10px）を超える場合（15px）は、スワイプ/スクロールとみなされて選択がトグルされないことを検証するテストを追加。
 - **結果:** テスト 271/271 全通過、ビルド成功。
 (その後コミット・デプロイ完了: `af1ef87`、Actions Run `39023378156`、本番ライブ動作確認済み)
+
+### フェーズ3: プルトゥリフレッシュの復旧(完了)
+- **課題:**
+  - 実機で下に引っ張って更新（プルトゥリフレッシュ）ができなくなっていた。
+  - 原因: 前回のフェーズ4（コミット `8c74bc0`）で追加された `onLostPointerCapture={handlePointerCancel}` により、`SwipeContainer` が縦優勢と判定して `releasePointerCapture()` を呼んだ直後に `lostpointercapture` イベントが発生。そのハンドラ内で共有の排他ロック `gestureLockRef.current` が無条件に `'none'` へリセットされてしまい、ジェスチャー継続中であるにもかかわらずロック所有権が失われてスワイプ判定等と干渉していた。
+- **対応:**
+  - `src/components/SwipeContainer.tsx`:
+    - `handlePointerUp` および `handlePointerCancel` 内のリセット処理を「自分が獲得した軸（`'horizontal'`）の時だけ `'none'` に解除する」ガード `if (gestureLockRef?.current === 'horizontal') gestureLockRef.current = 'none'` に変更。
+  - `src/components/PullToRefresh.tsx`:
+    - `handlePointerUp` および `handlePointerCancel` 内のリセット処理を「自分が獲得した軸（`'vertical'`）の時だけ `'none'` に解除する」ガード `if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'` に変更。
+    - ハードニングとして、`handlePointerDown` での `scrollTop > 0` チェックを `scrollTop > 2` に緩和（モバイルのバウンス・慣性スクロール残差1px対策）。
+  - テスト拡充:
+    - `src/components/SwipeContainer.test.tsx`:
+      - 他者がロック（`'vertical'`）を保持している場合に `SwipeContainer` のリリース操作でロックが消されないことを検証するテストを追加。
+      - 縦優勢移動後に `lostpointercapture` が同期/非同期に発火しても `'vertical'` ロックが保たれることを検証する回帰テストを追加。
+    - `src/components/PullToRefresh.test.tsx`:
+      - 他者がロック（`'horizontal'`）を保持している場合に `PullToRefresh` のリリース操作でロックが消されないことを検証するテストを追加。
+- **結果:** テスト 274/274 全通過、ビルド成功。

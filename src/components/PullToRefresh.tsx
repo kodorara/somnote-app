@@ -34,7 +34,7 @@ export function PullToRefresh({
       const scrollParent = target.closest(
         '.col-folders, .col-notes, .col-editor, .folder-list, .note-list, .preview',
       )
-      if (scrollParent && scrollParent.scrollTop > 0) {
+      if (scrollParent && scrollParent.scrollTop > 2) {
         return
       }
     }
@@ -66,7 +66,7 @@ export function PullToRefresh({
     isPulling.current = false
     startY.current = null
     startX.current = null
-    if (gestureLockRef) gestureLockRef.current = 'none'
+    if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
 
     if (pullDistance >= threshold && !isRefreshing && !disabled) {
       setPullDistance(threshold)
@@ -85,7 +85,7 @@ export function PullToRefresh({
     startY.current = null
     startX.current = null
     setPullDistance(0)
-    if (gestureLockRef) gestureLockRef.current = 'none'
+    if (gestureLockRef?.current === 'vertical') gestureLockRef.current = 'none'
   }
 
   const showIndicator = pullDistance > 0 || isRefreshing

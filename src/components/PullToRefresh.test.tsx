@@ -114,4 +114,19 @@ describe('PullToRefresh', () => {
     fireEvent.pointerUp(container)
     expect(lockRef.current).toBe('none')
   })
+
+  it('does not reset gestureLockRef on release if locked by another gesture (horizontal)', () => {
+    const lockRef = { current: 'horizontal' as const }
+    render(
+      <PullToRefresh onRefresh={vi.fn()} isRefreshing={false} gestureLockRef={lockRef}>
+        <div>コンテンツ</div>
+      </PullToRefresh>,
+    )
+    const container = screen.getByTestId('pull-to-refresh')
+
+    fireEvent.pointerDown(container, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(container)
+
+    expect(lockRef.current).toBe('horizontal')
+  })
 })
