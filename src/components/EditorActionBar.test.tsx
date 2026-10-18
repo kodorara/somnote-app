@@ -40,9 +40,10 @@ describe('EditorActionBar', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onMoveFolder when folder select is changed', () => {
+  it('calls onMoveFolder when folder select is changed and renders folder icon overlay', () => {
     const onMoveFolder = vi.fn()
-    render(<EditorActionBar {...defaultProps} onMoveFolder={onMoveFolder} />)
+    const { container } = render(<EditorActionBar {...defaultProps} onMoveFolder={onMoveFolder} />)
+    expect(container.querySelector('.action-bar-folder-select .folder-select-icon')).toBeInTheDocument()
     fireEvent.change(screen.getByRole('combobox', { name: 'フォルダ移動' }), {
       target: { value: 'プライベート' },
     })
