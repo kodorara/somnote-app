@@ -482,3 +482,32 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 
 回帰テストを追加し、全33テストファイル・314テスト通過、およびプロダクションビルド(`npm run build`)成功を確認。
 
+---
+
+## 13. UIポリッシュ6項目とエクスポート保存先フォルダ指定の改修(2026-10-18〜19、Antigravity担当)
+
+計画書(`docs/superpowers/plans/2026-10-18-ui-polish-and-export-destination-fixes.md`)のフェーズ1〜6を順番に実装・検証した。
+
+1. **フェーズ1: エディタ上部バーのフォルダ移動をアイコンボタン化 (`EditorActionBar.tsx`, `App.css`, `EditorActionBar.test.tsx`)**
+   - 従来の文字表示付き`<select>`が横幅を取り検索欄を圧迫していたため、`.folder-move-btn`ラッパー内に`FolderIcon`を重ね、透明な`<select className="folder-select-overlay" title={`移動先フォルダ（現在: ${currentFolder}）`}>`を全面配置する方式に圧縮。
+   - OSネイティブのフォルダ選択ポップアップ操作性を維持したまま32×32pxのアイコンボタンサイズに省スペース化した（コミット `24a4dfd`）。
+2. **フェーズ2: タグピッカーのタップ反応改善 (`SwipeContainer.tsx`, `SwipeContainer.test.tsx`)**
+   - `SwipeContainer`が`pointerdown`で即座に`setPointerCapture`を取得するため、タグチップや追加ボタンのタップ時に微小な指のブレで手動`click()`転送が不発になることがあった。
+   - `SwipeContainer.tsx`の除外セレクタに`.editor-tag-picker`を追加し、パネル内のタップがブラウザ本来のネイティブ`click`で即座に発火するようにした（コミット `1680b54`）。
+3. **フェーズ3: 本文検索スライダーの目盛りタップ領域拡大 (`Editor.tsx`, `App.css`, `Editor.test.tsx`)**
+   - `.editor-search-tick::before`擬似要素(`inset: -12px 0`)で各目盛りの上下タップ判定を26px以上に拡大。
+   - さらに`.editor-search-ticks`コンテナ自体の`onClick`でクリックY座標から最も近い検索一致箇所(`matches`)を計算し、少しずれた位置をタップしても最寄りの一致箇所へ即座にジャンプするよう改善（コミット `5209184`）。
+4. **フェーズ4: 本文内検索欄の「✕」ボタン重複解消 (`EditorActionBar.tsx`, `App.css`, `EditorActionBar.test.tsx`)**
+   - `<input type="search">`がモバイルブラウザ標準のクリアボタンを表示し、カスタムの`×`ボタンと二重になっていた問題を`type="text"`への変更および`::-webkit-search-cancel-button { display: none; }`の保険追加により解消（コミット `cbca2ff`）。
+5. **フェーズ5: フォルダ一覧下部バーの1行収まり化と新規フォルダ追加ボタン統合 (`icons.tsx`, `FolderList.tsx`, `App.css`, `FolderList.test.tsx`)**
+   - 常時表示だった「新しいフォルダ」入力フォームをトグル式に変更し、下部フッター(`.folder-settings-wrap`)に`FolderAddIcon`付き「追加」ボタン(`aria-label="新しいフォルダを追加"`)として統合。
+   - 「追加」「削除」「同期」「設定」の4ボタンがモバイル画面でも折り返さず1行に収まるよう、`white-space: nowrap`とコンパクトなパディング・ギャップに調整（コミット `9c46422`）。
+6. **フェーズ6: エクスポート保存先フォルダ指定（File System Access API）とテキスト出力フォーマット刷新 (`db.ts`, `fileSystemAccess.ts`, `backup.ts`, `Settings.tsx`, `App.css`, 各種テスト)**
+   - 意味のなかった旧「デフォルトの出力先フォルダ（アプリ内フォルダ初期値）」設定を完全撤去。
+   - Dexie v2として`appSettings`テーブルを新設し、File System Access API (`window.showDirectoryPicker`) で選択した端末内フォルダハンドル(`FileSystemDirectoryHandle`)をIndexedDBに永続化する`src/lib/fileSystemAccess.ts`を実装。
+   - 対応ブラウザでは設定した端末内フォルダへ直接ファイルを書き出し、非対応ブラウザでは分かりやすい案内メッセージを表示して標準ダウンロードへフォールバック。
+   - 貼り付けインポート(`handlePasteImport`)からJSON分岐を廃止してテキスト形式専用に統一。
+   - テキスト出力(`formatNotesAsText` / `parseNotesFromText`)から`■ タイトル`行を削除し、ヘッダー区切りを`---`、メモ間区切りを`***`に短縮してスマホ画面でも折り返さずMarkdownとしてそのまま読める形式に刷新（コミット `5b179b5`）。
+
+全33テストファイル・320テスト通過、およびプロダクションビルド成功を確認。
+
