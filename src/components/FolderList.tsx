@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
 import type { GestureLockRef } from '../lib/gestureLock'
-import { TrashIcon, GearIcon, RefreshIcon } from './icons'
+import { TrashIcon, GearIcon, RefreshIcon, FolderAddIcon } from './icons'
 
 interface Props {
   folders: StoredFolder[]
@@ -51,6 +51,7 @@ export function FolderList({
   online = true,
 }: Props) {
   const [newName, setNewName] = useState('')
+  const [createFormOpen, setCreateFormOpen] = useState(false)
   const [deleteMode, setDeleteMode] = useState(false)
   const [deleteTargetIds, setDeleteTargetIds] = useState<Set<string>>(new Set())
 
@@ -68,6 +69,7 @@ export function FolderList({
 
   const enterDeleteMode = () => {
     setDeleteMode(true)
+    setCreateFormOpen(false)
     setDeleteTargetIds(new Set())
   }
 
@@ -152,6 +154,7 @@ export function FolderList({
     if (!trimmed) return
     onCreate(trimmed)
     setNewName('')
+    setCreateFormOpen(false)
   }
 
   return (
@@ -233,21 +236,25 @@ export function FolderList({
         </button>
       </div>
 
-      <div className="folder-create-form">
-        <input
-          className="input"
-          aria-label="新しいフォルダ名"
-          placeholder="新しいフォルダ名"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitCreate()
-          }}
-        />
-        <button type="button" className="btn" onClick={submitCreate}>
-          追加
-        </button>
-      </div>
+      {createFormOpen && (
+        <div className="folder-create-form">
+          <input
+            className="input"
+            aria-label="新しいフォルダ名"
+            placeholder="新しいフォルダ名"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitCreate()
+              if (e.key === 'Escape') setCreateFormOpen(false)
+            }}
+            autoFocus
+          />
+          <button type="button" className="btn" onClick={submitCreate}>
+            追加
+          </button>
+        </div>
+      )}
 
       <div className="folder-settings-wrap">
         {deleteMode ? (
@@ -273,6 +280,14 @@ export function FolderList({
           </>
         ) : (
           <>
+            <button
+              type="button"
+              className="folder-settings-btn"
+              aria-label="新しいフォルダを追加"
+              onClick={() => setCreateFormOpen((o) => !o)}
+            >
+              <FolderAddIcon size={16} />
+            </button>
             {onOpenSettings && (
               <button
                 type="button"

@@ -24,31 +24,53 @@ describe('FolderList', () => {
     expect(onSelect).toHaveBeenCalledWith('仕事')
   })
 
-  it('calls onCreate with the entered name and clears the input', () => {
+  it('hides the folder creation form initially and opens it when 新しいフォルダを追加 is clicked, then closes on submit', () => {
     const onCreate = vi.fn()
     render(<FolderList {...baseProps} folders={folders} onCreate={onCreate} />)
+    expect(screen.queryByLabelText('新しいフォルダ名')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '新しいフォルダを追加' }))
     const input = screen.getByLabelText('新しいフォルダ名')
     fireEvent.change(input, { target: { value: '新規フォルダ' } })
     fireEvent.click(screen.getByRole('button', { name: '追加' }))
     expect(onCreate).toHaveBeenCalledWith('新規フォルダ')
-    expect(input).toHaveValue('')
+    expect(screen.queryByLabelText('新しいフォルダ名')).not.toBeInTheDocument()
   })
 
   it('does not call onCreate for a blank or whitespace-only name', () => {
     const onCreate = vi.fn()
     render(<FolderList {...baseProps} folders={folders} onCreate={onCreate} />)
+    fireEvent.click(screen.getByRole('button', { name: '新しいフォルダを追加' }))
     fireEvent.change(screen.getByLabelText('新しいフォルダ名'), { target: { value: '   ' } })
     fireEvent.click(screen.getByRole('button', { name: '追加' }))
     expect(onCreate).not.toHaveBeenCalled()
   })
 
-  it('submits the new folder name on Enter', () => {
+  it('submits the new folder name on Enter and closes the form on Escape', () => {
     const onCreate = vi.fn()
     render(<FolderList {...baseProps} folders={folders} onCreate={onCreate} />)
+    fireEvent.click(screen.getByRole('button', { name: '新しいフォルダを追加' }))
     const input = screen.getByLabelText('新しいフォルダ名')
     fireEvent.change(input, { target: { value: 'Enterで追加' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onCreate).toHaveBeenCalledWith('Enterで追加')
+    expect(screen.queryByLabelText('新しいフォルダ名')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '新しいフォルダを追加' }))
+    fireEvent.keyDown(screen.getByLabelText('新しいフォルダ名'), { key: 'Escape' })
+    expect(screen.queryByLabelText('新しいフォルダ名')).not.toBeInTheDocument()
+  })
+
+  it('renders all 4 footer action buttons inside .folder-settings-wrap', () => {
+    const { container } = render(
+      <FolderList {...baseProps} folders={folders} onOpenSettings={() => {}} onSync={() => {}} />,
+    )
+    const wrap = container.querySelector('.folder-settings-wrap') as HTMLElement
+    expect(wrap).toBeInTheDocument()
+    expect(wrap.querySelector('[aria-label="新しいフォルダを追加"]')).toBeInTheDocument()
+    expect(wrap.querySelector('[aria-label="設定を開く"]')).toBeInTheDocument()
+    expect(wrap.querySelector('[aria-label="同期"]')).toBeInTheDocument()
+    expect(wrap.querySelector('[aria-label="フォルダ削除"]')).toBeInTheDocument()
   })
 
   it('does not render per-row delete buttons', () => {
@@ -74,7 +96,7 @@ describe('FolderList', () => {
     vi.useRealTimers()
   })
 
-  it('enters folder delete mode when フォルダ削除 is clicked, selects a folder without navigating, and deletes it on clicking 削除', () => {
+  it('enters folder delete mode when フォルダ削除 is clicked, hides 新しいフォルダを追加, selects a folder without navigating, and deletes it on clicking 削除', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const onSelect = vi.fn()
     const onDelete = vi.fn()
@@ -82,6 +104,7 @@ describe('FolderList', () => {
 
     // 1. 「フォルダ削除」ボタンを押して選択モードに入る
     fireEvent.click(screen.getByRole('button', { name: 'フォルダ削除' }))
+    expect(screen.queryByRole('button', { name: '新しいフォルダを追加' })).not.toBeInTheDocument()
 
     // まだフォルダ未選択なので「削除」ボタンは無効
     const confirmDeleteBtn = screen.getByRole('button', { name: '選択したフォルダを削除' })

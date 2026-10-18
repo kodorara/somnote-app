@@ -955,8 +955,8 @@
 .folder-settings-wrap {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  gap: 2px;
+  padding: var(--space-2) var(--space-2);
   border-top: 1px solid var(--color-divider);
 }
 .folder-settings-btn {
@@ -964,16 +964,22 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  gap: 6px;
-  padding: 8px var(--space-2);
+  min-width: 0;
+  gap: 4px;
+  padding: 8px 4px;
   background: transparent;
   border: 0;
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+.folder-settings-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .folder-settings-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-text) 6%, transparent);

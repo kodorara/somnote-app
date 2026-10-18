@@ -495,6 +495,7 @@ describe('folder management', () => {
     const swipeContainer = screen.getByTestId('swipe-container')
     swipeRight(swipeContainer) // -> notes
     swipeRight(swipeContainer) // -> folders
+    fireEvent.click(await screen.findByRole('button', { name: '新しいフォルダを追加' }))
     await screen.findByLabelText('新しいフォルダ名')
 
     fireEvent.change(screen.getByLabelText('新しいフォルダ名'), { target: { value: '趣味' } })
