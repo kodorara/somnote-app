@@ -20,7 +20,7 @@ export interface SettingsProps {
   initial: GithubSettings | null
   onSave: (settings: GithubSettings) => void
   onClose?: () => void
-  onBackupRestored?: () => void
+  onBackupRestored?: (importedFolderName?: string) => void
   folders?: StoredFolder[]
 }
 
@@ -116,14 +116,14 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
         if (isTextFile) {
           const result = await importTextNotes(text, targetScope)
           setBackupMessage(`フォルダ「${targetScope}」にテキストからメモ${result.noteCount}件を追加しました`)
-          onBackupRestored?.()
+          onBackupRestored?.(targetScope)
           return
         }
         const json = JSON.parse(text)
         const validData = validateBackupData(json)
         const result = await importFolderBackupData(validData, targetScope)
         setBackupMessage(`フォルダ「${targetScope}」にメモ${result.noteCount}件を追加しました`)
-        onBackupRestored?.()
+        onBackupRestored?.(targetScope)
         return
       }
 
@@ -131,7 +131,7 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
         const fallbackFolder = defaultFolder || sortedFolders[0]?.name || 'インポート'
         const result = await importTextNotes(text, fallbackFolder)
         setBackupMessage(`フォルダ「${fallbackFolder}」にテキストからメモ${result.noteCount}件を追加しました`)
-        onBackupRestored?.()
+        onBackupRestored?.(fallbackFolder)
         return
       }
 
@@ -175,7 +175,7 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
         setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
       }
       setPasteInput('')
-      onBackupRestored?.()
+      onBackupRestored?.(targetFolder)
     } catch (err) {
       setBackupError(`貼り付け取り込みエラー: ${err instanceof Error ? err.message : String(err)}`)
     }

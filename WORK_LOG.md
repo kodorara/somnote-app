@@ -475,5 +475,10 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
    - 設定画面に「デフォルトの出力先フォルダ」設定(`localStorage`の`somnote.defaultExportFolder`)と「対象範囲（アプリ全体／個別フォルダ）」選択を追加。
    - NotebookLMでの分析やスマホ単体でのコピペ用途に向け、メモの区切り線(`===...===`)と作成日時・更新日時・フォルダ・タグを明記したテキスト形式出力(`formatNotesAsText`、`.txt`ダウンロード、スマホ貼り付け用ワンタップコピー＆プレビュー欄)およびテキスト貼り付けインポート(`parseNotesFromText` / `importTextNotes`)を実装。
    - **[重要・データ安全性]** フォルダ単位インポート(`importFolderBackupData` / `importTextNotes`)では、既存メモとのID衝突による静かな上書き消失を防止するため**必ず全件`crypto.randomUUID()`で新規IDを採番**し、かつGitHub同期(`planSync`)で不要なコンフリクトが発生しないよう**`baseSha: null, dirty: true, pendingOldPath: null`に強制正規化**して追加する設計とした。
+6. **Claude Codeレビュー指摘2件＋スライダー干渉対策の反映:**
+   - **① `FolderList.onSelect`での`activeNote`残留修正 (`App.tsx`):** 初めて訪れるフォルダ（履歴なし）やゴミ箱に切り替えた際に`activeNote`が前フォルダのメモのまま残留し、左スワイプで別フォルダのメモが開いてしまう不具合を修正(`setActiveNote(prevNote ?? null)`およびゴミ箱選択時の`setActiveNote(null)`を追加)。
+   - **② フォルダ単位インポート後の遷移先修正 (`Settings.tsx`, `App.tsx`):** フォルダ指定のJSON/テキスト/貼り付けインポート完了時は`onBackupRestored(importedFolderName)`を渡し、`handleBackupRestored`側で一番上のフォルダの空下書きではなく**インポート先フォルダのノート一覧画面(`mobileScreen='notes'`)**へ遷移し、オンライン時は`pushFolders`も実行するよう修正。
+   - **③ 右端の検索スライダーとエッジスワイプ帯の干渉防止 (`SwipeContainer.tsx`, `App.css`):** `.editor-search-slider`に`z-index: 6`（`.editor-edge-swipe-handle`の`z-index: 5`より上）と`touch-action: pan-y`を設定し、`SwipeContainer.tsx`でも`!nearEdge`判定より前に`.editor-search-slider`をスワイプ開始対象から除外。
 
-全33テストファイル・312テスト通過、およびプロダクションビルド(`npm run build`)成功を確認。
+回帰テストを追加し、全33テストファイル・314テスト通過、およびプロダクションビルド(`npm run build`)成功を確認。
+

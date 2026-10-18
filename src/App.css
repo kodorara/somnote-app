@@ -1287,6 +1287,7 @@
 
 .editor-search-slider {
   position: relative;
+  z-index: 6;
   width: 18px;
   flex: none;
   display: flex;
@@ -1297,6 +1298,7 @@
   border-radius: 999px;
   padding: 6px 0;
   user-select: none;
+  touch-action: pan-y;
 }
 
 .editor-search-ticks {

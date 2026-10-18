@@ -1608,6 +1608,85 @@ describe('folder templates, one-button tags, swipe history restoration, and in-n
       expect(screen.getByText('1 / 2件')).toBeInTheDocument()
     })
   })
+
+  it('clears activeNote when switching to a folder with no history so swiping left does not open the previous folder note', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    await db.folders.put({ folderId: '2', name: '未訪問フォルダ', color: '#00aaff', seq: 1 })
+    await db.notes.put({
+      id: 'folder1-note',
+      title: '前ノートのメモ',
+      folder: '前ノート',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      deleted: false,
+      llmLinks: [],
+      body: '前ノートのメモ\n別フォルダの本文',
+      baseSha: null,
+      dirty: false,
+    })
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    // editor -> notes
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    // 「前ノートのメモ」を一度開いてactiveNoteにセットする
+    fireEvent.click(await screen.findByText('前ノートのメモ'))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
+
+    // editor -> notes -> folders へ移動
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
+
+    // 履歴のない「未訪問フォルダ」を選択してnotes画面へ遷移
+    fireEvent.click(await screen.findByRole('button', { name: '未訪問フォルダ' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    // ここで左スワイプしても、前フォルダのメモでエディタが開かずmobile-notesに留まること
+    swipeLeft(swipeContainer)
+    expect(container.querySelector('.columns')).toHaveClass('mobile-notes')
+  })
+
+  it('switches to the imported folder and displays its notes after folder-scoped import in Settings', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+    vi.spyOn(githubClient, 'putContent').mockResolvedValue({ content: { sha: 'new-sha' } })
+
+    await db.folders.put({ folderId: '2', name: '仕事', color: '#ff0000', seq: 1 })
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    // 設定モーダルを開く
+    fireEvent.click(screen.getByRole('button', { name: '設定を開く' }))
+    expect(screen.getByRole('dialog', { name: '設定' })).toBeInTheDocument()
+
+    // 対象範囲を「仕事」にしてテキスト貼り付けインポートを実行
+    fireEvent.change(screen.getByLabelText('対象範囲'), { target: { value: '仕事' } })
+    fireEvent.change(screen.getByLabelText('インポートするテキストまたはJSON'), {
+      target: { value: '仕事フォルダへのインポートメモ\n2行目本文' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '貼り付けた内容を取り込む' }))
+
+    expect(await screen.findByText(/フォルダ「仕事」にメモ1件を追加しました/)).toBeInTheDocument()
+
+    // 設定を閉じると、「仕事」フォルダのノート一覧画面が表示されており、インポートしたメモが見えること
+    fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }))
+    await waitFor(() => {
+      expect(container.querySelector('.columns')).toHaveClass('mobile-notes')
+      expect(screen.getByText('仕事フォルダへのインポートメモ')).toBeInTheDocument()
+    })
+  })
 })
+
 
 

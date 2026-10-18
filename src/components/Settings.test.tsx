@@ -60,6 +60,7 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(importSpy).toHaveBeenCalledWith(validData)
       expect(onBackupRestored).toHaveBeenCalledTimes(1)
+      expect(onBackupRestored).toHaveBeenCalledWith()
       expect(screen.getByText(/復元完了: フォルダ1件、メモ1件を読み込みました/)).toBeInTheDocument()
     })
   })
@@ -119,6 +120,7 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(importTextSpy).toHaveBeenCalledWith('貼り付けメモ本文', '仕事')
       expect(onBackupRestored).toHaveBeenCalledTimes(1)
+      expect(onBackupRestored).toHaveBeenCalledWith('仕事')
       expect(screen.getByText(/フォルダ「仕事」にメモ2件を追加しました/)).toBeInTheDocument()
     })
   })

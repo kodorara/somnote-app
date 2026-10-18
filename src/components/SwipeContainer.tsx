@@ -144,6 +144,9 @@ export function SwipeContainer({
     // スワイプから除外する。ただし画面端からのジェスチャーはエッジスワイプとして
     // 常に許可する(上のEDGE_ZONE_PXの説明を参照)。
     const target = e.target as HTMLElement | null
+    if (target && (target.closest('.folder-drag-handle') || target.closest('.editor-search-slider'))) {
+      return
+    }
     if (
       !nearEdge &&
       target &&
@@ -151,7 +154,6 @@ export function SwipeContainer({
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.isContentEditable ||
-        target.closest('.folder-drag-handle') ||
         target.closest('.action-bar-btn') ||
         target.closest('.action-bar-select') ||
         hasHorizontallyScrollableAncestor(target, rootRef.current))

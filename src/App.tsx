@@ -97,10 +97,28 @@ export default function App() {
     setAllTags(Array.from(globalTagSet).sort())
   }
 
-  const handleBackupRestored = async () => {
+  const handleBackupRestored = async (importedFolderName?: string) => {
     const allFolders = await db.folders.toArray()
     setFolders(allFolders)
-    await openInitialDraft(allFolders)
+    if (importedFolderName) {
+      updateSelectedFolder(importedFolderName)
+      const folderNotes = await db.notes.where('folder').equals(importedFolderName).toArray()
+      setNotes(folderNotes)
+      initialDraftBodyRef.current = ''
+      setActiveNote(null)
+      setWordFilter('')
+      setTagFilter(null)
+      setMobileScreen('notes')
+      if (settings && navigator.onLine) {
+        try {
+          await pushFolders(settings, githubClient)
+        } catch {
+          // フォルダ同期失敗時は次回fullSyncで再送される
+        }
+      }
+    } else {
+      await openInitialDraft(allFolders)
+    }
     await rebuildSearchIndex()
     void loadCounts()
     resetSearch()
@@ -911,15 +929,15 @@ export default function App() {
                 updateSelectedFolder(name)
                 if (isTrashFolder(name)) {
                   setNotes(await db.notes.filter((n) => !!n.deleted).toArray())
+                  initialDraftBodyRef.current = ''
+                  setActiveNote(null)
                 } else {
                   const nextNotes = await db.notes.where('folder').equals(name).toArray()
                   setNotes(nextNotes)
                   const prevId = lastOpenedNoteByFolderRef.current.get(name)
                   const prevNote = prevId ? nextNotes.find((n) => n.id === prevId && !n.deleted) : undefined
-                  if (prevNote) {
-                    initialDraftBodyRef.current = ''
-                    setActiveNote(prevNote)
-                  }
+                  initialDraftBodyRef.current = ''
+                  setActiveNote(prevNote ?? null)
                 }
                 setWordFilter('')
                 setTagFilter(null)
