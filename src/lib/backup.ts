@@ -9,21 +9,8 @@ export interface BackupData {
   notes: StoredNote[]
 }
 
-const DEFAULT_EXPORT_FOLDER_KEY = 'somnote.defaultExportFolder'
-const NOTE_BLOCK_DELIMITER = '================================================================================'
-const NOTE_HEADER_SEPARATOR = '--------------------------------------------------------------------------------'
-
-export function getDefaultExportFolder(): string {
-  return localStorage.getItem(DEFAULT_EXPORT_FOLDER_KEY) ?? ''
-}
-
-export function saveDefaultExportFolder(folderName: string): void {
-  if (!folderName) {
-    localStorage.removeItem(DEFAULT_EXPORT_FOLDER_KEY)
-  } else {
-    localStorage.setItem(DEFAULT_EXPORT_FOLDER_KEY, folderName)
-  }
-}
+const NOTE_BLOCK_DELIMITER = '---'
+const NOTE_HEADER_SEPARATOR = '***'
 
 /**
  * IndexedDB内のフォルダおよびメモを取得し、BackupDataオブジェクトを構築する。
@@ -192,11 +179,10 @@ export function formatNotesAsText(notes: StoredNote[]): string {
   if (activeNotes.length === 0) return ''
 
   const blocks = activeNotes.map((n) => {
-    const title = n.title || deriveTitle(n.body) || '(無題)'
     const tags = (n.tags?.length ? n.tags : extractTags(n.body)).map((t) => `#${t}`).join(' ')
     const lines = [
       NOTE_BLOCK_DELIMITER,
-      `■ タイトル: ${title}`,
+      '',
       `■ フォルダ: ${n.folder}`,
       `■ 作成日時: ${formatDisplayDate(n.createdAt)}`,
       `■ 更新日時: ${formatDisplayDate(n.updatedAt)}`,
@@ -205,11 +191,12 @@ export function formatNotesAsText(notes: StoredNote[]): string {
       lines.push(`■ タグ: ${tags}`)
     }
     lines.push(NOTE_HEADER_SEPARATOR)
+    lines.push('')
     lines.push(n.body)
     return lines.join('\n')
   })
 
-  return `${blocks.join('\n')}\n${NOTE_BLOCK_DELIMITER}`
+  return `${blocks.join('\n\n')}\n\n${NOTE_BLOCK_DELIMITER}`
 }
 
 function parseDateOrFallback(raw: string | undefined, fallbackIso: string): string {
@@ -234,7 +221,7 @@ export function parseNotesFromText(
   if (!normalizedText) return []
 
   const now = new Date().toISOString()
-  const hasDelimiter = /^={10,}\s*$/m.test(normalizedText)
+  const hasDelimiter = /^-{3,}\s*$/m.test(normalizedText)
 
   if (!hasDelimiter) {
     return [
@@ -258,7 +245,7 @@ export function parseNotesFromText(
   }
 
   const rawBlocks = normalizedText
-    .split(/^={10,}\s*$/m)
+    .split(/^-{3,}\s*$/m)
     .map((b) => b.trim())
     .filter((b) => b.length > 0)
 
@@ -266,14 +253,14 @@ export function parseNotesFromText(
   const notes: StoredNote[] = []
 
   for (const block of rawBlocks) {
-    const sepMatch = /^-{10,}\s*$/m.exec(block)
+    const sepMatch = /^\*{3,}\s*$/m.exec(block)
     let createdAt = now
     let updatedAt = now
     let body = block
 
     if (sepMatch && sepMatch.index !== undefined) {
       const headerPart = block.slice(0, sepMatch.index)
-      body = block.slice(sepMatch.index + sepMatch[0].length).replace(/^\n/, '')
+      body = block.slice(sepMatch.index + sepMatch[0].length).replace(/^\n{1,2}/, '')
       for (const line of headerPart.split('\n')) {
         const createdMatch = /^■\s*作成日時:\s*(.+)$/.exec(line.trim())
         if (createdMatch) {
@@ -327,16 +314,23 @@ export async function importTextNotes(
 }
 
 /**
+ * 書き出しファイル名を日時付きで生成する共通ヘルパー。
+ */
+export function buildExportFilename(prefix: string, ext: string): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
+  return `${prefix}-${dateStr}.${ext}`
+}
+
+/**
  * BackupDataをJSONファイルとしてブラウザからダウンロード保存する。
  */
 export function downloadBackupJson(data: BackupData, customFilename?: string): void {
   const json = JSON.stringify(data, null, 2)
   const blob = new Blob([json], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const now = new Date()
-  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
-  const filename = customFilename ?? `somnote-backup-${dateStr}.json`
+  const filename = customFilename ?? buildExportFilename('somnote-backup', 'json')
 
   const a = document.createElement('a')
   a.href = url
@@ -353,10 +347,7 @@ export function downloadBackupJson(data: BackupData, customFilename?: string): v
 export function downloadTextFile(text: string, customFilename?: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const now = new Date()
-  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
-  const filename = customFilename ?? `somnote-export-${dateStr}.txt`
+  const filename = customFilename ?? buildExportFilename('somnote-export', 'txt')
 
   const a = document.createElement('a')
   a.href = url
@@ -366,3 +357,4 @@ export function downloadTextFile(text: string, customFilename?: string): void {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
+

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { GithubSettings } from '../lib/githubSettings'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
@@ -9,11 +9,17 @@ import {
   importFolderBackupData,
   formatNotesAsText,
   importTextNotes,
+  buildExportFilename,
   downloadBackupJson,
   downloadTextFile,
-  getDefaultExportFolder,
-  saveDefaultExportFolder,
 } from '../lib/backup'
+import {
+  isFileSystemAccessSupported,
+  pickExportDirectory,
+  getSavedExportDirectory,
+  clearSavedExportDirectory,
+  writeFileToDirectory,
+} from '../lib/fileSystemAccess'
 import { CloseIcon, GearIcon } from './icons'
 
 export interface SettingsProps {
@@ -31,19 +37,31 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
 
-  const initialDefaultFolder = getDefaultExportFolder()
-  const [defaultFolder, setDefaultFolder] = useState<string>(initialDefaultFolder)
-  const [targetScope, setTargetScope] = useState<string>(initialDefaultFolder)
+  const [targetScope, setTargetScope] = useState<string>('')
   const [pasteInput, setPasteInput] = useState<string>('')
   const [exportedTextPreview, setExportedTextPreview] = useState<string | null>(null)
+  const [exportDirName, setExportDirName] = useState<string | null>(null)
+  const fsSupported = isFileSystemAccessSupported()
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const sortedFolders = sortedBySeq(folders)
 
-  const handleDefaultFolderChange = (folderName: string) => {
-    setDefaultFolder(folderName)
-    saveDefaultExportFolder(folderName)
-    setTargetScope(folderName)
+  useEffect(() => {
+    if (!fsSupported) return
+    void (async () => {
+      const handle = await getSavedExportDirectory()
+      setExportDirName(handle?.name ?? null)
+    })()
+  }, [fsSupported])
+
+  const handlePickDirectory = async () => {
+    const handle = await pickExportDirectory()
+    setExportDirName(handle?.name ?? null)
+  }
+
+  const handleClearDirectory = async () => {
+    await clearSavedExportDirectory()
+    setExportDirName(null)
   }
 
   const handleExport = async () => {
@@ -52,7 +70,15 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
     try {
       const scope = targetScope || undefined
       const data = await createBackupData(scope)
-      downloadBackupJson(data)
+      const json = JSON.stringify(data, null, 2)
+      const filename = buildExportFilename('somnote-backup', 'json')
+
+      const dirHandle = fsSupported ? await getSavedExportDirectory() : null
+      if (dirHandle) {
+        await writeFileToDirectory(dirHandle, filename, json)
+      } else {
+        downloadBackupJson(data, filename)
+      }
       if (scope) {
         setBackupMessage(`フォルダ「${scope}」を書き出しました（メモ${data.notes.length}件）`)
       } else {
@@ -70,7 +96,14 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
       const scope = targetScope || undefined
       const data = await createBackupData(scope)
       const text = formatNotesAsText(data.notes)
-      downloadTextFile(text)
+      const filename = buildExportFilename('somnote-export', 'txt')
+
+      const dirHandle = fsSupported ? await getSavedExportDirectory() : null
+      if (dirHandle) {
+        await writeFileToDirectory(dirHandle, filename, text)
+      } else {
+        downloadTextFile(text, filename)
+      }
       setBackupMessage(
         scope
           ? `フォルダ「${scope}」をテキスト形式で書き出しました（メモ${data.notes.length}件）`
@@ -128,7 +161,7 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
       }
 
       if (isTextFile) {
-        const fallbackFolder = defaultFolder || sortedFolders[0]?.name || 'インポート'
+        const fallbackFolder = sortedFolders[0]?.name || 'インポート'
         const result = await importTextNotes(text, fallbackFolder)
         setBackupMessage(`フォルダ「${fallbackFolder}」にテキストからメモ${result.noteCount}件を追加しました`)
         onBackupRestored?.(fallbackFolder)
@@ -160,20 +193,13 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
     setBackupError(null)
     const trimmed = pasteInput.trim()
     if (!trimmed) {
-      setBackupError('貼り付けるテキストまたはJSONを入力してください')
+      setBackupError('貼り付けるテキストを入力してください')
       return
     }
-    const targetFolder = targetScope || defaultFolder || sortedFolders[0]?.name || 'インポート'
+    const targetFolder = targetScope || sortedFolders[0]?.name || 'インポート'
     try {
-      if (trimmed.startsWith('{')) {
-        const json = JSON.parse(trimmed)
-        const validData = validateBackupData(json)
-        const result = await importFolderBackupData(validData, targetFolder)
-        setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
-      } else {
-        const result = await importTextNotes(trimmed, targetFolder)
-        setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
-      }
+      const result = await importTextNotes(trimmed, targetFolder)
+      setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
       setPasteInput('')
       onBackupRestored?.(targetFolder)
     } catch (err) {
@@ -240,21 +266,28 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
         </p>
 
         <div className="settings-field-row">
-          <label htmlFor="default-export-folder">デフォルトの出力先フォルダ</label>
-          <select
-            id="default-export-folder"
-            aria-label="デフォルトの出力先フォルダ"
-            className="input settings-select"
-            value={defaultFolder}
-            onChange={(e) => handleDefaultFolderChange(e.target.value)}
-          >
-            <option value="">指定なし（アプリ全体）</option>
-            {sortedFolders.map((f) => (
-              <option key={f.folderId} value={f.name}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+          <label>保存先</label>
+          {fsSupported ? (
+            <div className="settings-export-dir-row">
+              <span>
+                {exportDirName
+                  ? `選択中: ${exportDirName}`
+                  : '未選択(ブラウザの既定のダウンロード先に保存されます)'}
+              </span>
+              <button type="button" className="btn" onClick={handlePickDirectory}>
+                保存先フォルダを選択
+              </button>
+              {exportDirName && (
+                <button type="button" className="btn btn-ghost" onClick={handleClearDirectory}>
+                  解除
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="settings-section-desc">
+              お使いのブラウザでは保存先フォルダを指定できないため、ブラウザの既定のダウンロード先に保存されます。
+            </p>
+          )}
         </div>
 
         <div className="settings-field-row">
@@ -335,12 +368,12 @@ export function Settings({ initial, onSave, onClose, onBackupRestored, folders =
         )}
 
         <div className="settings-text-box-wrap">
-          <label htmlFor="paste-import-input">スマホ貼り付けインポート（テキスト / JSON）</label>
+          <label htmlFor="paste-import-input">スマホ貼り付けインポート（テキスト）</label>
           <textarea
             id="paste-import-input"
-            aria-label="インポートするテキストまたはJSON"
+            aria-label="インポートするテキスト"
             className="input settings-paste-textarea"
-            placeholder="区切り線付きテキスト、またはJSONをここに貼り付けて取り込めます..."
+            placeholder="区切り線付きテキスト、またはプレーンテキストをここに貼り付けて取り込めます..."
             value={pasteInput}
             onChange={(e) => setPasteInput(e.target.value)}
             rows={4}

@@ -9,17 +9,26 @@ import {
   formatNotesAsText,
   parseNotesFromText,
   importTextNotes,
-  getDefaultExportFolder,
-  saveDefaultExportFolder,
+  buildExportFilename,
   downloadBackupJson,
   type BackupData,
 } from './backup'
+import {
+  isFileSystemAccessSupported,
+  pickExportDirectory,
+  getSavedExportDirectory,
+  clearSavedExportDirectory,
+  writeFileToDirectory,
+  type DirectoryHandleWithPermission,
+} from './fileSystemAccess'
 import { planSync } from './sync'
 
 beforeEach(async () => {
   await db.folders.clear()
   await db.notes.clear()
+  await db.appSettings.clear()
   localStorage.clear()
+  delete (window as unknown as Record<string, unknown>).showDirectoryPicker
   vi.restoreAllMocks()
 })
 
@@ -207,7 +216,7 @@ describe('backup module', () => {
   })
 
   describe('text format export & import', () => {
-    it('formats notes with dates and boundaries and parses them back as new notes', async () => {
+    it('formats notes with short markdown delimiters without title lines and parses them back as new notes', async () => {
       const notes: StoredNote[] = [
         {
           ...dummyNote,
@@ -230,8 +239,10 @@ describe('backup module', () => {
       ]
 
       const text = formatNotesAsText(notes)
-      expect(text).toContain('================================================================================')
-      expect(text).toContain('■ タイトル: 1件目')
+      expect(text).toContain('---')
+      expect(text).toContain('***')
+      expect(text).not.toContain('================================================================================')
+      expect(text).not.toContain('■ タイトル')
       expect(text).toContain('■ 作成日時:')
       expect(text).toContain('1件目\n本文A\n#タグA')
       expect(text).toContain('2件目\n本文B')
@@ -254,13 +265,48 @@ describe('backup module', () => {
     })
   })
 
-  describe('default export folder setting', () => {
-    it('saves and retrieves default export folder in localStorage', () => {
-      expect(getDefaultExportFolder()).toBe('')
-      saveDefaultExportFolder('仕事')
-      expect(getDefaultExportFolder()).toBe('仕事')
-      saveDefaultExportFolder('')
-      expect(getDefaultExportFolder()).toBe('')
+  describe('fileSystemAccess module', () => {
+    it('detects support via window.showDirectoryPicker and persists/restores/clears directory handle', async () => {
+      expect(isFileSystemAccessSupported()).toBe(false)
+      expect(await pickExportDirectory()).toBeNull()
+
+      const writeSpy = vi.fn().mockResolvedValue(undefined)
+      const closeSpy = vi.fn().mockResolvedValue(undefined)
+      const cloneableHandle = {
+        kind: 'directory' as const,
+        name: 'MyExports',
+      } as unknown as DirectoryHandleWithPermission
+
+      ;(window as unknown as Record<string, unknown>).showDirectoryPicker = vi.fn().mockResolvedValue(cloneableHandle)
+      expect(isFileSystemAccessSupported()).toBe(true)
+
+      const picked = await pickExportDirectory()
+      expect(picked?.name).toBe('MyExports')
+
+      const restored = await getSavedExportDirectory()
+      expect(restored?.name).toBe('MyExports')
+
+      const writableDirHandle = {
+        ...restored,
+        getFileHandle: vi.fn().mockResolvedValue({
+          createWritable: vi.fn().mockResolvedValue({
+            write: writeSpy,
+            close: closeSpy,
+          }),
+        }),
+      } as unknown as DirectoryHandleWithPermission
+      await writeFileToDirectory(writableDirHandle, 'test.txt', 'hello')
+      expect(writeSpy).toHaveBeenCalledWith('hello')
+      expect(closeSpy).toHaveBeenCalledTimes(1)
+
+      await clearSavedExportDirectory()
+      expect(await getSavedExportDirectory()).toBeNull()
+      delete (window as unknown as Record<string, unknown>).showDirectoryPicker
+    })
+
+    it('builds timestamped export filenames via buildExportFilename', () => {
+      const name = buildExportFilename('somnote-backup', 'json')
+      expect(name).toMatch(/^somnote-backup-\d{8}_\d{4}\.json$/)
     })
   })
 
@@ -298,3 +344,4 @@ describe('backup module', () => {
     })
   })
 })
+

@@ -853,7 +853,7 @@ describe('search integration', () => {
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
     swipeRight(swipeContainer)
     await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-folders'))
-    await screen.findByLabelText('新しいフォルダ名')
+    await screen.findByRole('button', { name: '新しいフォルダを追加' })
 
     // フォルダ一覧画面での検索プレースホルダーは「全メモを検索」
     const foldersSearchInput = screen.getByPlaceholderText('全メモを検索')
@@ -1673,7 +1673,7 @@ describe('folder templates, one-button tags, swipe history restoration, and in-n
 
     // 対象範囲を「仕事」にしてテキスト貼り付けインポートを実行
     fireEvent.change(screen.getByLabelText('対象範囲'), { target: { value: '仕事' } })
-    fireEvent.change(screen.getByLabelText('インポートするテキストまたはJSON'), {
+    fireEvent.change(screen.getByLabelText('インポートするテキスト'), {
       target: { value: '仕事フォルダへのインポートメモ\n2行目本文' },
     })
     fireEvent.click(screen.getByRole('button', { name: '貼り付けた内容を取り込む' }))

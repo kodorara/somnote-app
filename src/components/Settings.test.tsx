@@ -2,8 +2,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Settings } from './Settings'
 import * as backupLib from '../lib/backup'
+import * as fsAccess from '../lib/fileSystemAccess'
 
 beforeEach(() => {
+  delete (window as unknown as Record<string, unknown>).showDirectoryPicker
   vi.restoreAllMocks()
 })
 
@@ -74,8 +76,7 @@ describe('Settings', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('saves default export folder and exports selected folder in JSON or text format', async () => {
-    localStorage.clear()
+  it('exports selected folder in text format and shows unsupported destination message when File System Access API is absent', async () => {
     const folders = [
       { folderId: 'f1', name: '仕事', color: '#f00', seq: 0 },
       { folderId: 'f2', name: '趣味', color: '#0f0', seq: 1 },
@@ -90,10 +91,13 @@ describe('Settings', () => {
 
     render(<Settings initial={null} onSave={vi.fn()} folders={folders} />)
 
-    const defaultSelect = screen.getByLabelText('デフォルトの出力先フォルダ')
-    fireEvent.change(defaultSelect, { target: { value: '仕事' } })
-    expect(backupLib.getDefaultExportFolder()).toBe('仕事')
+    expect(screen.queryByLabelText('デフォルトの出力先フォルダ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存先フォルダを選択' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/お使いのブラウザでは保存先フォルダを指定できないため、ブラウザの既定のダウンロード先に保存されます/),
+    ).toBeInTheDocument()
 
+    fireEvent.change(screen.getByLabelText('対象範囲'), { target: { value: '仕事' } })
     fireEvent.click(screen.getByRole('button', { name: 'テキスト形式で書き出す (.txt)' }))
 
     await waitFor(() => {
@@ -103,25 +107,66 @@ describe('Settings', () => {
     })
   })
 
-  it('imports pasted text notes into the selected folder', async () => {
-    localStorage.clear()
+  it('picks an export directory, writes exported files directly to it, and clears it on clicking 解除 when File System Access API is supported', async () => {
+    ;(window as unknown as Record<string, unknown>).showDirectoryPicker = vi.fn()
+    const mockDirHandle = { kind: 'directory', name: 'SomnoteExports' } as unknown as fsAccess.DirectoryHandleWithPermission
+    vi.spyOn(fsAccess, 'getSavedExportDirectory').mockResolvedValue(null)
+    const pickSpy = vi.spyOn(fsAccess, 'pickExportDirectory').mockResolvedValue(mockDirHandle)
+    const clearSpy = vi.spyOn(fsAccess, 'clearSavedExportDirectory').mockResolvedValue(undefined)
+    const writeSpy = vi.spyOn(fsAccess, 'writeFileToDirectory').mockResolvedValue(undefined)
+    vi.spyOn(backupLib, 'createBackupData').mockResolvedValue({
+      version: 1,
+      exportedAt: '2026-10-18T12:00:00Z',
+      folders: [],
+      notes: [],
+    })
+
+    render(<Settings initial={null} onSave={vi.fn()} />)
+
+    const pickBtn = screen.getByRole('button', { name: '保存先フォルダを選択' })
+    expect(pickBtn).toBeInTheDocument()
+    fireEvent.click(pickBtn)
+
+    await waitFor(() => {
+      expect(pickSpy).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('選択中: SomnoteExports')).toBeInTheDocument()
+    })
+
+    // 保存先が選択された状態でJSON書き出しを押すと writeFileToDirectory が呼ばれる
+    vi.spyOn(fsAccess, 'getSavedExportDirectory').mockResolvedValue(mockDirHandle)
+    fireEvent.click(screen.getByRole('button', { name: 'バックアップを書き出す (JSON)' }))
+
+    await waitFor(() => {
+      expect(writeSpy).toHaveBeenCalledWith(mockDirHandle, expect.stringMatching(/^somnote-backup-.*\.json$/), expect.any(String))
+    })
+
+    // 解除ボタンを押すと未選択に戻る
+    fireEvent.click(screen.getByRole('button', { name: '解除' }))
+    await waitFor(() => {
+      expect(clearSpy).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/未選択\(ブラウザの既定のダウンロード先に保存されます\)/)).toBeInTheDocument()
+    })
+  })
+
+  it('imports pasted text notes (always as text, without JSON paste branch) into the selected folder', async () => {
     const folders = [{ folderId: 'f1', name: '仕事', color: '#f00', seq: 0 }]
-    const importTextSpy = vi.spyOn(backupLib, 'importTextNotes').mockResolvedValue({ noteCount: 2 })
+    const importTextSpy = vi.spyOn(backupLib, 'importTextNotes').mockResolvedValue({ noteCount: 1 })
     const onBackupRestored = vi.fn()
 
     render(<Settings initial={null} onSave={vi.fn()} folders={folders} onBackupRestored={onBackupRestored} />)
 
     fireEvent.change(screen.getByLabelText('対象範囲'), { target: { value: '仕事' } })
-    fireEvent.change(screen.getByLabelText('インポートするテキストまたはJSON'), {
-      target: { value: '貼り付けメモ本文' },
+    fireEvent.change(screen.getByLabelText('インポートするテキスト'), {
+      target: { value: '{"looksLikeJson": true}' },
     })
     fireEvent.click(screen.getByRole('button', { name: '貼り付けた内容を取り込む' }))
 
     await waitFor(() => {
-      expect(importTextSpy).toHaveBeenCalledWith('貼り付けメモ本文', '仕事')
+      expect(importTextSpy).toHaveBeenCalledWith('{"looksLikeJson": true}', '仕事')
       expect(onBackupRestored).toHaveBeenCalledTimes(1)
       expect(onBackupRestored).toHaveBeenCalledWith('仕事')
-      expect(screen.getByText(/フォルダ「仕事」にメモ2件を追加しました/)).toBeInTheDocument()
+      expect(screen.getByText(/フォルダ「仕事」にメモ1件を追加しました/)).toBeInTheDocument()
     })
   })
 })
+

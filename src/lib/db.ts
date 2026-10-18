@@ -28,10 +28,18 @@ export interface SyncMeta {
   value: string
 }
 
+// 端末ローカルのUI設定を保存する汎用キーバリューstore。GitHub同期とは無関係。
+// 現状はエクスポート先のFileSystemDirectoryHandleの保存にのみ使う。
+export interface AppSetting {
+  key: string
+  value: unknown
+}
+
 class SomNoteDB extends Dexie {
   notes!: Table<StoredNote, string>
   folders!: Table<StoredFolder, string>
   syncMeta!: Table<SyncMeta, string>
+  appSettings!: Table<AppSetting, string>
 
   constructor() {
     super('somnote')
@@ -42,7 +50,16 @@ class SomNoteDB extends Dexie {
       folders: 'folderId, seq',
       syncMeta: 'key',
     })
+    // version(1)からの差分だけでなく、変更の無いテーブルも含めて全テーブルを再掲する
+    // (Dexieの仕様上、stores()に書かなかったテーブルはそのバージョンで削除扱いになるため)
+    this.version(2).stores({
+      notes: 'id, folder, [folder+seq], updatedAt',
+      folders: 'folderId, seq',
+      syncMeta: 'key',
+      appSettings: 'key',
+    })
   }
 }
 
 export const db = new SomNoteDB()
+

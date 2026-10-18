@@ -1120,6 +1120,15 @@
   height: 36px;
 }
 
+.settings-export-dir-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--color-text);
+}
+
 .settings-text-box-wrap {
   display: flex;
   flex-direction: column;

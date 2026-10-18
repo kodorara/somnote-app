@@ -5,6 +5,7 @@ import { db } from './db'
 beforeEach(async () => {
   await db.notes.clear()
   await db.folders.clear()
+  await db.appSettings.clear()
 })
 
 describe('db', () => {
@@ -43,4 +44,14 @@ describe('db', () => {
     const workNotes = await db.notes.where('folder').equals('仕事').toArray()
     expect(workNotes.map((n) => n.id)).toEqual(['1'])
   })
+
+  it('stores, retrieves, and deletes a setting in appSettings', async () => {
+    await db.appSettings.put({ key: 'exportDirectoryHandle', value: { name: 'Downloads' } })
+    const saved = await db.appSettings.get('exportDirectoryHandle')
+    expect(saved?.value).toEqual({ name: 'Downloads' })
+
+    await db.appSettings.delete('exportDirectoryHandle')
+    expect(await db.appSettings.get('exportDirectoryHandle')).toBeUndefined()
+  })
 })
+
