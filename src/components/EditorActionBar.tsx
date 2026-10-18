@@ -266,7 +266,7 @@ export function EditorActionBar({
       {(searchExpanded || searchQuery) && (
         <div className="editor-search-row">
           <input
-            type="search"
+            type="text"
             className="input editor-search-input"
             aria-label="本文内を検索"
             placeholder="本文内を検索"

@@ -64,12 +64,13 @@ describe('EditorActionBar', () => {
   it('toggles search row and calls onSearchChange', () => {
     const onSearchChange = vi.fn()
     render(<EditorActionBar {...defaultProps} onSearchChange={onSearchChange} />)
-    expect(screen.queryByRole('searchbox', { name: '本文内を検索' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('本文内を検索')).not.toBeInTheDocument()
 
     // 検索トグルクリックで入力欄表示
     fireEvent.click(screen.getByRole('button', { name: 'メモ内を検索' }))
-    const input = screen.getByRole('searchbox', { name: '本文内を検索' })
+    const input = screen.getByLabelText('本文内を検索')
     expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'text')
 
     fireEvent.change(input, { target: { value: 'テスト' } })
     expect(onSearchChange).toHaveBeenCalledWith('テスト')

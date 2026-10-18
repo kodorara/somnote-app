@@ -474,6 +474,10 @@
   height: 32px;
   font-size: 13px;
 }
+.editor-search-input::-webkit-search-cancel-button {
+  display: none;
+  -webkit-appearance: none;
+}
 .action-bar-btn-close {
   background: transparent;
   border: 0;

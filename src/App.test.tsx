@@ -918,7 +918,7 @@ describe('pull to refresh and editor action bar', () => {
 
     // 2. メモ内検索トグル
     fireEvent.click(screen.getByRole('button', { name: 'メモ内を検索' }))
-    const editorSearchInput = screen.getByRole('searchbox', { name: '本文内を検索' })
+    const editorSearchInput = screen.getByLabelText('本文内を検索')
     expect(editorSearchInput).toBeInTheDocument()
     fireEvent.change(editorSearchInput, { target: { value: 'アクション' } })
 
@@ -1599,7 +1599,7 @@ describe('folder templates, one-button tags, swipe history restoration, and in-n
 
     // メモ内検索を開いて「言葉」を検索すると、編集モードのまま色付きハイライトと右側スライダーが表示されること
     fireEvent.click(screen.getByRole('button', { name: 'メモ内を検索' }))
-    const searchInput = screen.getByRole('searchbox', { name: '本文内を検索' })
+    const searchInput = screen.getByLabelText('本文内を検索')
     fireEvent.change(searchInput, { target: { value: '言葉' } })
 
     await waitFor(() => {
