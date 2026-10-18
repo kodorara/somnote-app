@@ -221,7 +221,24 @@ export function Editor({ body, onChange, highlightQuery, mode: externalMode, onM
         )}
         {query && matches.length > 0 && (
           <div className="editor-search-slider" data-testid="editor-search-slider">
-            <div className="editor-search-ticks">
+            <div
+              className="editor-search-ticks"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                if (rect.height === 0) return
+                const ratio = (e.clientY - rect.top) / rect.height
+                let nearestIdx = 0
+                let nearestDist = Infinity
+                matches.forEach((m, idx) => {
+                  const dist = Math.abs(m.ratio - ratio)
+                  if (dist < nearestDist) {
+                    nearestDist = dist
+                    nearestIdx = idx
+                  }
+                })
+                scrollToMatch(nearestIdx)
+              }}
+            >
               {matches.map((m, idx) => (
                 <button
                   key={`${m.index}-${idx}`}
@@ -229,7 +246,10 @@ export function Editor({ body, onChange, highlightQuery, mode: externalMode, onM
                   className={`editor-search-tick ${idx === clampedMatchIndex ? 'is-current' : ''}`}
                   style={{ top: `${m.ratio * 100}%` }}
                   aria-label={`一致箇所 ${idx + 1} へ移動`}
-                  onClick={() => scrollToMatch(idx)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    scrollToMatch(idx)
+                  }}
                 />
               ))}
             </div>

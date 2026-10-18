@@ -68,4 +68,43 @@ describe('Editor', () => {
     const updatedMarks = container.querySelectorAll('mark.search-highlight')
     expect(updatedMarks[1]).toHaveClass('is-current')
   })
+
+  it('jumps to the nearest match when clicking on .editor-search-ticks container or directly on a tick button', () => {
+    const { container } = render(
+      <Editor
+        body={'1行目: キーワード\n2行目: 通常\n3行目: 通常\n4行目: 通常\n5行目: キーワード再登場'}
+        onChange={() => {}}
+        highlightQuery="キーワード"
+        mode="edit"
+      />,
+    )
+    expect(screen.getByText('1 / 2件')).toBeInTheDocument()
+
+    // 1. 個々の .editor-search-tick ボタンを直接クリックした場合
+    const tick2 = screen.getByRole('button', { name: '一致箇所 2 へ移動' })
+    fireEvent.click(tick2)
+    expect(screen.getByText('2 / 2件')).toBeInTheDocument()
+
+    // 2. .editor-search-ticks コンテナの余白（上部=1件目に近いY座標）をクリックした場合
+    const ticksContainer = container.querySelector('.editor-search-ticks') as HTMLElement
+    vi.spyOn(ticksContainer, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      height: 200,
+      left: 0,
+      right: 18,
+      bottom: 200,
+      width: 18,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.click(ticksContainer, { clientY: 15 }) // ratio = 15/200 = 0.075 -> 1件目(ratio 0)に最も近い
+    expect(screen.getByText('1 / 2件')).toBeInTheDocument()
+
+    // 下部（2件目に近いY座標）をクリックした場合
+    fireEvent.click(ticksContainer, { clientY: 185 }) // ratio = 185/200 = 0.925 -> 2件目に最も近い
+    expect(screen.getByText('2 / 2件')).toBeInTheDocument()
+  })
 })
+

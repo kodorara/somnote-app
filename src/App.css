@@ -1303,7 +1303,9 @@
 .editor-search-ticks {
   position: absolute;
   inset: 8px 2px;
+  z-index: 2;
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .editor-search-tick {
@@ -1317,6 +1319,12 @@
   background: color-mix(in srgb, var(--color-accent) 65%, transparent);
   cursor: pointer;
   padding: 0;
+}
+
+.editor-search-tick::before {
+  content: '';
+  position: absolute;
+  inset: -12px 0;
 }
 
 .editor-search-tick.is-current {
