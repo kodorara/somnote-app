@@ -184,6 +184,8 @@ describe('EditorActionBar', () => {
 
     fireEvent.click(kaigiChip)
     expect(onToggleTag).toHaveBeenCalledWith('会議')
+    fireEvent.click(juyoChip)
+    expect(onToggleTag).toHaveBeenCalledWith('重要')
 
     const newTagInput = screen.getByLabelText('新しいタグ')
     fireEvent.change(newTagInput, { target: { value: 'アイデア' } })

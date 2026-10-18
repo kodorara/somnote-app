@@ -577,4 +577,28 @@ describe('SwipeContainer', () => {
     // lockRef.currentが'vertical'のまま保持されていること(横方向のみ解除するガードが効いている)
     expect(lockRef.current).toBe('vertical')
   })
+
+  it('ignores pointerdown inside .editor-tag-picker and does not call setPointerCapture', () => {
+    const onSwipeLeft = vi.fn()
+    render(
+      <SwipeContainer onSwipeLeft={onSwipeLeft}>
+        <div className="editor-tag-picker">
+          <button type="button" className="editor-tag-chip">
+            #会議
+          </button>
+        </div>
+      </SwipeContainer>,
+    )
+    const container = screen.getByTestId('swipe-container')
+    const setPointerCapture = vi.fn()
+    container.setPointerCapture = setPointerCapture
+
+    const tagBtn = screen.getByRole('button', { name: '#会議' })
+    fireEvent.pointerDown(tagBtn, { pointerId: 11, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(tagBtn, { pointerId: 11, clientX: 100, clientY: 100 })
+
+    expect(setPointerCapture).not.toHaveBeenCalled()
+    expect(onSwipeLeft).not.toHaveBeenCalled()
+  })
 })
+

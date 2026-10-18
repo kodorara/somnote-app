@@ -144,7 +144,12 @@ export function SwipeContainer({
     // スワイプから除外する。ただし画面端からのジェスチャーはエッジスワイプとして
     // 常に許可する(上のEDGE_ZONE_PXの説明を参照)。
     const target = e.target as HTMLElement | null
-    if (target && (target.closest('.folder-drag-handle') || target.closest('.editor-search-slider'))) {
+    if (
+      target &&
+      (target.closest('.folder-drag-handle') ||
+        target.closest('.editor-search-slider') ||
+        target.closest('.editor-tag-picker'))
+    ) {
       return
     }
     if (
