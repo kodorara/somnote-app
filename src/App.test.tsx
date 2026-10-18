@@ -1462,3 +1462,152 @@ describe('permanent delete in trash', () => {
   })
 })
 
+describe('folder templates, one-button tags, swipe history restoration, and in-note search', () => {
+  const swipeRight = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 200, clientY: 100 })
+  }
+  const swipeLeft = (el: Element) => {
+    fireEvent.pointerDown(el, { clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 })
+  }
+
+  it('loads the first note whose first line is "テンプレート" when creating a new note, and discards unedited template drafts', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    await db.notes.bulkPut([
+      {
+        id: 'tmpl-2',
+        title: 'テンプレート',
+        folder: '前ノート',
+        seq: 5,
+        tags: [],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        deleted: false,
+        llmLinks: [],
+        body: 'テンプレート\n2番目のテンプレ内容',
+        baseSha: null,
+        dirty: false,
+      },
+      {
+        id: 'tmpl-1',
+        title: 'テンプレート',
+        folder: '前ノート',
+        seq: 1,
+        tags: ['日報'],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        deleted: false,
+        llmLinks: [],
+        body: 'テンプレート\n## 定例フォーマット\n#日報',
+        baseSha: null,
+        dirty: false,
+      },
+    ])
+
+    const { container } = render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    expect(textarea).toHaveValue('## 定例フォーマット\n#日報')
+
+    // 未編集のままノート一覧へスワイプしても余計な複製メモとして保存されないこと
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    const allStored = await db.notes.toArray()
+    expect(allStored).toHaveLength(2)
+  })
+
+  it('returns to the previously opened real note via swipe after cancelling an unedited "+ 新規作成" draft', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    await db.notes.put({
+      id: 'real-note-1',
+      title: '直前に開いていたメモ',
+      folder: '前ノート',
+      seq: 0,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      deleted: false,
+      llmLinks: [],
+      body: '直前に開いていたメモ\n大事な本文',
+      baseSha: null,
+      dirty: false,
+    })
+
+    const { container } = render(<App />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const swipeContainer = screen.getByTestId('swipe-container')
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    // 既存メモを開く
+    fireEvent.click(await screen.findByText('直前に開いていたメモ'))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('直前に開いていたメモ\n大事な本文')
+
+    // ノート一覧に戻って「+ 新規作成」を押し、何も書かずにノート一覧へ戻る
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+    fireEvent.click(screen.getByRole('button', { name: '+ 新規作成' }))
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('')
+
+    swipeRight(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-notes'))
+
+    // 再びエディタへスワイプすると、空下書きではなく「直前に開いていたメモ」に戻れること
+    swipeLeft(swipeContainer)
+    await waitFor(() => expect(container.querySelector('.columns')).toHaveClass('mobile-editor'))
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveValue('直前に開いていたメモ\n大事な本文')
+  })
+
+  it('toggles global tags with one click in EditorActionBar and highlights in-note search matches with right-side slider', async () => {
+    localStorage.setItem('somnote.githubSettings', JSON.stringify({ token: 't', owner: 'o', repo: 'somnote-data' }))
+    vi.spyOn(githubClient, 'getTree').mockResolvedValue({ tree: [], truncated: false })
+
+    await db.folders.put({ folderId: '2', name: '別フォルダ', color: '#ff00ff', seq: 1 })
+    await db.notes.put({
+      id: 'other-folder-note',
+      title: '別フォルダのメモ',
+      folder: '別フォルダ',
+      seq: 0,
+      tags: ['横断タグ'],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      deleted: false,
+      llmLinks: [],
+      body: '別フォルダの本文\n#横断タグ',
+      baseSha: null,
+      dirty: false,
+    })
+
+    const { container } = render(<App />)
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    fireEvent.change(textarea, { target: { value: '検索対象の言葉と別の一致箇所の言葉' } })
+
+    // タグボタンを開くと別フォルダの #横断タグ も候補に表示され、ワンタップで付与できること
+    fireEvent.click(screen.getByRole('button', { name: 'タグ' }))
+    const tagChip = await screen.findByRole('button', { name: '#横断タグ' })
+    fireEvent.click(tagChip)
+    expect(textarea).toHaveValue('検索対象の言葉と別の一致箇所の言葉\n#横断タグ')
+
+    // メモ内検索を開いて「言葉」を検索すると、編集モードのまま色付きハイライトと右側スライダーが表示されること
+    fireEvent.click(screen.getByRole('button', { name: 'メモ内を検索' }))
+    const searchInput = screen.getByRole('searchbox', { name: '本文内を検索' })
+    fireEvent.change(searchInput, { target: { value: '言葉' } })
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark.search-highlight')).toHaveLength(2)
+      expect(screen.getByTestId('editor-search-slider')).toBeInTheDocument()
+      expect(screen.getByText('1 / 2件')).toBeInTheDocument()
+    })
+  })
+})
+
+

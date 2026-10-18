@@ -12,6 +12,7 @@ import {
   CloseIcon,
   RefreshIcon,
   HistoryIcon,
+  TagIcon,
 } from './icons'
 
 export interface EditorActionBarProps {
@@ -32,6 +33,9 @@ export interface EditorActionBarProps {
   onPermanentDelete?: () => void
   isHistoryOpen?: boolean
   onToggleHistory?: () => void
+  availableTags?: string[]
+  activeTags?: string[]
+  onToggleTag?: (tag: string) => void
 }
 
 
@@ -53,9 +57,24 @@ export function EditorActionBar({
   onPermanentDelete,
   isHistoryOpen = false,
   onToggleHistory,
+  availableTags = [],
+  activeTags = [],
+  onToggleTag,
 }: EditorActionBarProps) {
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const [tagPickerOpen, setTagPickerOpen] = useState(false)
+  const [newTagInput, setNewTagInput] = useState('')
 
+  const mergedTags = Array.from(new Set([...availableTags, ...activeTags])).sort()
+
+  const handleAddNewTag = () => {
+    const cleaned = newTagInput.replace(/^#+/, '').trim()
+    if (!cleaned) return
+    if (!activeTags.includes(cleaned)) {
+      onToggleTag?.(cleaned)
+    }
+    setNewTagInput('')
+  }
 
   return (
     <div className="editor-action-bar-container">
@@ -87,6 +106,20 @@ export function EditorActionBar({
             ))}
           </select>
         </div>
+
+        {/* 2.5 タグ選択ピッカー (Google Keep風ワンボタンタグ付与) */}
+        {onToggleTag && (
+          <button
+            type="button"
+            className={`action-bar-btn ${tagPickerOpen || activeTags.length > 0 ? 'is-active' : ''}`}
+            aria-label="タグ"
+            onClick={() => setTagPickerOpen((o) => !o)}
+            title="タグを追加・解除"
+          >
+            <TagIcon size={18} />
+            {activeTags.length > 0 && <span className="action-bar-badge">{activeTags.length}</span>}
+          </button>
+        )}
 
         {/* 3. メモ内検索トグル */}
         <button
@@ -176,6 +209,56 @@ export function EditorActionBar({
           <button type="button" className="btn btn-danger permanent-delete-btn" onClick={onPermanentDelete}>
             完全に削除
           </button>
+        </div>
+      )}
+
+      {/* タグ選択ピッカーパネル */}
+      {onToggleTag && tagPickerOpen && (
+        <div className="editor-tag-picker" role="region" aria-label="タグ選択">
+          <div className="editor-tag-chips">
+            {mergedTags.length === 0 ? (
+              <span className="editor-tag-empty">まだタグがありません</span>
+            ) : (
+              mergedTags.map((tag) => {
+                const isSelected = activeTags.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`editor-tag-chip ${isSelected ? 'is-selected' : ''}`}
+                    aria-pressed={isSelected}
+                    onClick={() => onToggleTag(tag)}
+                  >
+                    <span className="editor-tag-dot" aria-hidden="true" />
+                    <span>#{tag}</span>
+                  </button>
+                )
+              })
+            )}
+          </div>
+          <div className="editor-tag-add-row">
+            <input
+              type="text"
+              className="input editor-tag-input"
+              aria-label="新しいタグ"
+              placeholder="新しいタグを追加..."
+              value={newTagInput}
+              onChange={(e) => setNewTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleAddNewTag()
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary editor-tag-add-btn"
+              onClick={handleAddNewTag}
+            >
+              追加
+            </button>
+          </div>
         </div>
       )}
 

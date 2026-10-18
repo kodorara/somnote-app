@@ -5,13 +5,21 @@ import {
   createBackupData,
   validateBackupData,
   importBackupData,
+  importFolderBackupData,
+  formatNotesAsText,
+  parseNotesFromText,
+  importTextNotes,
+  getDefaultExportFolder,
+  saveDefaultExportFolder,
   downloadBackupJson,
   type BackupData,
 } from './backup'
+import { planSync } from './sync'
 
 beforeEach(async () => {
   await db.folders.clear()
   await db.notes.clear()
+  localStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -49,6 +57,24 @@ describe('backup module', () => {
       expect(backup.folders).toEqual([dummyFolder])
       expect(backup.notes).toEqual([dummyNote])
       expect(backup.exportedAt).toBeDefined()
+    })
+
+    it('filters by folderName when specified and excludes deleted notes', async () => {
+      await db.folders.bulkPut([
+        dummyFolder,
+        { folderId: 'f-2', name: 'プライベート', color: '#00ff00', seq: 1 },
+      ])
+      await db.notes.bulkPut([
+        dummyNote,
+        { ...dummyNote, id: 'n-del', deleted: true },
+        { ...dummyNote, id: 'n-other', folder: 'プライベート' },
+      ])
+
+      const folderBackup = await createBackupData('仕事')
+      expect(folderBackup.folders).toHaveLength(1)
+      expect(folderBackup.folders[0].name).toBe('仕事')
+      expect(folderBackup.notes).toHaveLength(1)
+      expect(folderBackup.notes[0].id).toBe('n-1')
     })
   })
 
@@ -127,6 +153,114 @@ describe('backup module', () => {
 
       const currentNotes = await db.notes.toArray()
       expect(currentNotes).toEqual([dummyNote])
+    })
+  })
+
+  describe('importFolderBackupData (sync safety & ID collision prevention)', () => {
+    it('assigns fresh UUIDs so existing notes with the same ID are never overwritten, and normalizes baseSha: null & dirty: true', async () => {
+      await db.folders.put(dummyFolder)
+      // 同じ id: 'n-1' を持つ未同期のローカル編集メモが存在するケース
+      await db.notes.put({
+        ...dummyNote,
+        id: 'n-1',
+        body: 'ローカルの大切な未同期編集',
+        baseSha: 'old-remote-sha',
+        dirty: true,
+      })
+
+      const incoming: BackupData = {
+        version: 1,
+        exportedAt: '2026-10-18T12:00:00Z',
+        folders: [dummyFolder],
+        notes: [
+          {
+            ...dummyNote,
+            id: 'n-1',
+            body: 'インポートされた別内容\n#分析',
+            baseSha: 'stale-sha-from-export',
+            dirty: false,
+          },
+        ],
+      }
+
+      const result = await importFolderBackupData(incoming, '仕事')
+      expect(result.noteCount).toBe(1)
+
+      const allNotes = await db.notes.toArray()
+      expect(allNotes).toHaveLength(2)
+
+      const original = allNotes.find((n) => n.id === 'n-1')!
+      expect(original.body).toBe('ローカルの大切な未同期編集')
+
+      const imported = allNotes.find((n) => n.id !== 'n-1')!
+      expect(imported.folder).toBe('仕事')
+      expect(imported.baseSha).toBeNull()
+      expect(imported.dirty).toBe(true)
+      expect(imported.tags).toEqual(['分析'])
+
+      // planSync でも偽コンフリクトにならず、toPush に入ること
+      const plan = planSync([imported], [{ path: 'notes/仕事/n-1.md', sha: 'remote-sha' }])
+      expect(plan.conflicts).toHaveLength(0)
+      expect(plan.toPush).toHaveLength(1)
+      expect(plan.toPush[0]).toBe(imported.id)
+    })
+  })
+
+  describe('text format export & import', () => {
+    it('formats notes with dates and boundaries and parses them back as new notes', async () => {
+      const notes: StoredNote[] = [
+        {
+          ...dummyNote,
+          id: 'n-1',
+          title: '1件目',
+          body: '1件目\n本文A\n#タグA',
+          tags: ['タグA'],
+          createdAt: '2026-10-18T01:30:00.000Z',
+          updatedAt: '2026-10-18T02:45:00.000Z',
+        },
+        {
+          ...dummyNote,
+          id: 'n-2',
+          title: '2件目',
+          body: '2件目\n本文B',
+          tags: [],
+          createdAt: '2026-10-18T03:00:00.000Z',
+          updatedAt: '2026-10-18T04:00:00.000Z',
+        },
+      ]
+
+      const text = formatNotesAsText(notes)
+      expect(text).toContain('================================================================================')
+      expect(text).toContain('■ タイトル: 1件目')
+      expect(text).toContain('■ 作成日時:')
+      expect(text).toContain('1件目\n本文A\n#タグA')
+      expect(text).toContain('2件目\n本文B')
+
+      const parsed = parseNotesFromText(text, '分析フォルダ', 10)
+      expect(parsed).toHaveLength(2)
+      expect(parsed[0].folder).toBe('分析フォルダ')
+      expect(parsed[0].seq).toBe(10)
+      expect(parsed[0].body).toBe('1件目\n本文A\n#タグA')
+      expect(parsed[0].tags).toEqual(['タグA'])
+      expect(parsed[0].baseSha).toBeNull()
+      expect(parsed[0].dirty).toBe(true)
+      expect(parsed[1].seq).toBe(11)
+      expect(parsed[1].body).toBe('2件目\n本文B')
+
+      const importRes = await importTextNotes(text, '分析フォルダ')
+      expect(importRes.noteCount).toBe(2)
+      const stored = await db.notes.where('folder').equals('分析フォルダ').toArray()
+      expect(stored).toHaveLength(2)
+    })
+  })
+
+  describe('default export folder setting', () => {
+    it('saves and retrieves default export folder in localStorage', () => {
+      expect(getDefaultExportFolder()).toBe('')
+      saveDefaultExportFolder('仕事')
+      expect(getDefaultExportFolder()).toBe('仕事')
+      saveDefaultExportFolder('')
+      expect(getDefaultExportFolder()).toBe('')
     })
   })
 

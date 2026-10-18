@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { db, type StoredNote, type StoredFolder } from './lib/db'
-import { createDraftNote, shouldDiscardDraft, deriveTitle } from './lib/draftNote'
+import {
+  createDraftNote,
+  shouldDiscardDraft,
+  deriveTitle,
+  findFolderTemplate,
+  extractTemplateBody,
+} from './lib/draftNote'
+import { extractTags, toggleTagInBody } from './lib/tags'
 import { getGithubSettings, saveGithubSettings, type GithubSettings } from './lib/githubSettings'
 import { buildIndexAsync, search, indexNote, removeNoteFromIndex, type SearchIndex } from './lib/search'
 import { fullSync } from './lib/fullSync'
@@ -43,7 +50,10 @@ export default function App() {
   const [notes, setNotes] = useState<StoredNote[]>([])
   const [trashCount, setTrashCount] = useState(0)
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({})
+  const [allTags, setAllTags] = useState<string[]>([])
   const [activeNote, setActiveNote] = useState<StoredNote | null>(null)
+  const lastOpenedNoteByFolderRef = useRef<Map<string, string>>(new Map())
+  const lastOpenedNoteIdRef = useRef<string | null>(null)
   const [mobileScreen, setMobileScreen] = useState<MobileScreen>('editor')
   const [online, setOnline] = useState(navigator.onLine)
   const [conflicts, setConflicts] = useState<ConflictItem[]>([])
@@ -66,21 +76,25 @@ export default function App() {
   const searchIndexRef = useRef<SearchIndex | null>(null)
   const gestureLockRef = useRef<GestureAxis>('none')
 
-  // ゴミ箱件数とフォルダごとの件数を1回のtoArray()スキャンでまとめて計算する
-  // (trashCount/folderCountsを別々にスキャンして往復を倍にしない)
+  // ゴミ箱件数・フォルダごとの件数・アプリ全体の既存タグ一覧を1回のtoArray()スキャンでまとめて計算する
   const loadCounts = async () => {
     const all = await db.notes.toArray()
     let trash = 0
     const counts: Record<string, number> = {}
+    const globalTagSet = new Set<string>()
     for (const n of all) {
       if (n.deleted) {
         trash++
         continue
       }
       counts[n.folder] = (counts[n.folder] ?? 0) + 1
+      for (const t of n.tags ?? extractTags(n.body)) {
+        globalTagSet.add(t)
+      }
     }
     setTrashCount(trash)
     setFolderCounts(counts)
+    setAllTags(Array.from(globalTagSet).sort())
   }
 
   const handleBackupRestored = async () => {
@@ -178,6 +192,7 @@ export default function App() {
 
   // 起動時およびバックアップ復元時に、一番上のフォルダを開いて新規下書きをセットする。
   // バックグラウンド同期完了ハンドラからは絶対に呼ばない(ユーザー入力中の下書きを上書きしないため)。
+  const initialDraftBodyRef = useRef<string>('')
   const openInitialDraft = async (allFolders: StoredFolder[]) => {
     // 起動時は常に一番上(表示順が最小)のフォルダで新規メモを書き始める。
     // フォルダの並び替え(上下ボタン)で、どのフォルダを起動時の既定にするか選べる。
@@ -191,7 +206,10 @@ export default function App() {
     void loadCounts()
 
     const maxSeq = folderNotes.reduce((m, n) => Math.max(m, n.seq), -1)
-    const draft = createDraftNote(folder.name, maxSeq)
+    const tmpl = findFolderTemplate(folderNotes)
+    const tmplBody = tmpl ? extractTemplateBody(tmpl) : ''
+    initialDraftBodyRef.current = tmplBody
+    const draft = createDraftNote(folder.name, maxSeq, tmplBody)
     setActiveNote(draft)
     setMobileScreen('editor')
   }
@@ -301,16 +319,36 @@ export default function App() {
 
   const updateBody = (body: string) => {
     if (!activeNote) return
-    setActiveNote({ ...activeNote, body, dirty: true, updatedAt: new Date().toISOString() })
+    setActiveNote({
+      ...activeNote,
+      body,
+      tags: extractTags(body),
+      dirty: true,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  const handleToggleTag = (tag: string) => {
+    if (!activeNote) return
+    const nextBody = toggleTagInBody(activeNote.body, tag)
+    updateBody(nextBody)
   }
 
   // noteを明示的な引数で受け取る(activeNoteのstate更新は非同期なため、呼び出し直後の
   // 最新値を確実に使うには呼び出し元から渡してもらう方が安全)
   const saveNote = async (note: StoredNote) => {
     // 設計書2.2節: タイトルは保存のたびに本文1行目から自動算出する
-    const withTitle = { ...note, title: deriveTitle(note.body) }
+    const withTitle = {
+      ...note,
+      title: deriveTitle(note.body),
+      tags: extractTags(note.body),
+    }
     await db.notes.put(withTitle)
     lastSavedBodyRef.current = withTitle.body
+    if (!withTitle.deleted) {
+      lastOpenedNoteByFolderRef.current.set(withTitle.folder, withTitle.id)
+      lastOpenedNoteIdRef.current = withTitle.id
+    }
     updateSearchIndexForNote(withTitle)
     setNotes((prev) => {
       const exists = prev.some((n) => n.id === withTitle.id)
@@ -318,6 +356,7 @@ export default function App() {
     })
     if (activeNote?.id === withTitle.id) setActiveNote(withTitle)
     await refreshPendingCount()
+    void loadCounts()
   }
 
   const saveActiveNote = async () => {
@@ -332,7 +371,10 @@ export default function App() {
     const note = activeNoteRef.current
     if (!note) return null
     if (note.body === lastSavedBodyRef.current) return null
-    if (shouldDiscardDraft(note.body) && !notesRef.current.some((n) => n.id === note.id)) {
+    if (
+      shouldDiscardDraft(note.body, initialDraftBodyRef.current) &&
+      !notesRef.current.some((n) => n.id === note.id)
+    ) {
       return null
     }
     return note
@@ -388,14 +430,22 @@ export default function App() {
 
   const leaveEditor = async () => {
     if (!activeNote) return
-    if (!shouldDiscardDraft(activeNote.body) || notes.some((n) => n.id === activeNote.id)) {
+    const isExisting = notes.some((n) => n.id === activeNote.id)
+    if (!shouldDiscardDraft(activeNote.body, initialDraftBodyRef.current) || isExisting) {
       await saveNote(activeNote)
+    } else if (selectedFolder) {
+      // 未編集の新規下書きを破棄して離脱する際、そのフォルダで直前に開いていた実メモがあれば復元する
+      const prevId = lastOpenedNoteByFolderRef.current.get(selectedFolder)
+      const prevNote = prevId ? notes.find((n) => n.id === prevId && !n.deleted) : undefined
+      if (prevNote) {
+        initialDraftBodyRef.current = ''
+        setActiveNote(prevNote)
+      }
     }
     setEditorSearchQuery('')
     setIsLlmOpen(false)
     setIsHistoryOpen(false)
     setEditorPreviewMode('edit')
-
   }
 
   const deleteActiveNote = async () => {
@@ -466,7 +516,10 @@ export default function App() {
     await leaveEditor()
     resetSearch()
     const maxSeq = notes.reduce((m, n) => Math.max(m, n.seq), -1)
-    const draft = createDraftNote(selectedFolder, maxSeq)
+    const tmpl = findFolderTemplate(notes)
+    const tmplBody = tmpl ? extractTemplateBody(tmpl) : ''
+    initialDraftBodyRef.current = tmplBody
+    const draft = createDraftNote(selectedFolder, maxSeq, tmplBody)
     setActiveNote(draft)
     setMobileScreen('editor')
   }
@@ -859,7 +912,14 @@ export default function App() {
                 if (isTrashFolder(name)) {
                   setNotes(await db.notes.filter((n) => !!n.deleted).toArray())
                 } else {
-                  setNotes(await db.notes.where('folder').equals(name).toArray())
+                  const nextNotes = await db.notes.where('folder').equals(name).toArray()
+                  setNotes(nextNotes)
+                  const prevId = lastOpenedNoteByFolderRef.current.get(name)
+                  const prevNote = prevId ? nextNotes.find((n) => n.id === prevId && !n.deleted) : undefined
+                  if (prevNote) {
+                    initialDraftBodyRef.current = ''
+                    setActiveNote(prevNote)
+                  }
                 }
                 setWordFilter('')
                 setTagFilter(null)
@@ -929,6 +989,11 @@ export default function App() {
                     updateSelectedFolder(n.folder)
                     setNotes(await db.notes.where('folder').equals(n.folder).toArray())
                   }
+                  if (!n.deleted) {
+                    lastOpenedNoteByFolderRef.current.set(n.folder, n.id)
+                    lastOpenedNoteIdRef.current = n.id
+                  }
+                  initialDraftBodyRef.current = ''
                   setActiveNote(n)
                 }
                 setMobileScreen('editor')
@@ -956,6 +1021,9 @@ export default function App() {
                   onPermanentDelete={permanentlyDeleteActiveNote}
                   isHistoryOpen={isHistoryOpen}
                   onToggleHistory={() => setIsHistoryOpen((o) => !o)}
+                  availableTags={allTags}
+                  activeTags={activeNote.tags}
+                  onToggleTag={handleToggleTag}
                 />
 
                 <Editor
@@ -1013,6 +1081,7 @@ export default function App() {
       {isSettingsOpen && (
         <Settings
           initial={settings}
+          folders={folders}
           onSave={(s) => {
             saveGithubSettings(s)
             setSettings(s)

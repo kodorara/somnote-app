@@ -159,6 +159,36 @@ describe('EditorActionBar', () => {
     fireEvent.click(historyBtn)
     expect(onToggleHistory).toHaveBeenCalledTimes(1)
   })
+
+  it('opens tag picker, displays existing tags, toggles a tag with one click, and adds a new tag', () => {
+    const onToggleTag = vi.fn()
+    render(
+      <EditorActionBar
+        {...defaultProps}
+        availableTags={['会議', '重要']}
+        activeTags={['重要']}
+        onToggleTag={onToggleTag}
+      />,
+    )
+    const tagBtn = screen.getByRole('button', { name: 'タグ' })
+    expect(tagBtn).toBeInTheDocument()
+
+    fireEvent.click(tagBtn)
+    expect(screen.getByRole('region', { name: 'タグ選択' })).toBeInTheDocument()
+
+    const kaigiChip = screen.getByRole('button', { name: '#会議' })
+    const juyoChip = screen.getByRole('button', { name: '#重要' })
+    expect(kaigiChip).toHaveAttribute('aria-pressed', 'false')
+    expect(juyoChip).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(kaigiChip)
+    expect(onToggleTag).toHaveBeenCalledWith('会議')
+
+    const newTagInput = screen.getByLabelText('新しいタグ')
+    fireEvent.change(newTagInput, { target: { value: 'アイデア' } })
+    fireEvent.click(screen.getByRole('button', { name: '追加' }))
+    expect(onToggleTag).toHaveBeenCalledWith('アイデア')
+  })
 })
 
 

@@ -453,4 +453,27 @@ Antigravityからの引き継ぎレビュー依頼に対し、4つの懸念を�
 
 ユニットテスト・結合テストを更新(`FolderList.test.tsx`、`NoteList.test.tsx`、`App.test.tsx`)し、全テスト通過・ビルド成功を確認。
 
+---
 
+## 12. テンプレート・タグピッカー・スワイプ履歴復元・本文内検索ハイライト・フォルダ単位エクスポート/インポートの実装(2026-10-18、Antigravity担当)
+
+ユーザー要望の5項目について、実装計画書(`docs/superpowers/plans/2026-10-18-tags-export-search-swipe-template.md`)および外部コードレビューの指摘事項をすべて反映した上で実装・検証した。
+
+1. **フォルダごとのテンプレート機能 (`draftNote.ts`, `App.tsx`):**
+   - 各フォルダ内で1行目が「テンプレート」となっている非削除メモのうち、`seq`が最小のものを`findFolderTemplate`で特定し、2行目以降(`extractTemplateBody`)を新規作成時の初期本文として読み込む。
+   - テンプレートが読み込まれただけ（未編集）の下書きが複製保存されないよう、`shouldDiscardDraft(body, initialTemplateBody)`を拡張し、`leaveEditor`と`getPendingSaveNote`の両方で`initialDraftBodyRef.current`を渡して判定するよう統一した。
+2. **ワンボタンでのタグ付与機能 (`tags.ts`, `EditorActionBar.tsx`, `App.tsx`, `App.css`):**
+   - `loadCounts()`の`db.notes.toArray()`スキャン内でアプリ全体の非削除メモから全既存タグ(`allTags`)を集計し、余分なDBクエリを増やさずに全フォルダ横断のタグ候補を保持。
+   - `EditorActionBar`にタグボタン(`TagIcon`)と展開式のタグピッカーパネルを追加。既存タグをチップ表示し、ワンタップで`toggleTagInBody`により本文の`#タグ`をON/OFF切り替え可能にした（新規タグの即時追加欄も併設）。
+3. **スワイプによる直前のフォルダ・メモへの復帰 (`App.tsx`):**
+   - `lastOpenedNoteByFolderRef`で各フォルダで直前に開いていた実メモIDを記録。
+   - 「`+ 新規作成`」後に未編集で戻った場合(`leaveEditor`)やフォルダ切替時(`FolderList.onSelect`)に、空下書きを残さず直前の実メモを`activeNote`へ復元することで、スワイプ操作だけで直前に開いていたフォルダ・メモへ自然に戻れるようにした。
+4. **メモページの「本文内を検索」ハイライト＆右側スライダー (`Editor.tsx`, `App.css`):**
+   - 編集モード(`textarea`)でも検索一致箇所が色付きで分かるよう、`<textarea>`自体はネイティブ文字色・ネイティブキャレットのまま維持し、背面の`.editor-highlight-backdrop`で一致箇所の背景ハイライト(`<mark class="search-highlight">` / `.is-current`)を描画する方式を採用。
+   - 一致件数表示・前後ジャンプボタンに加え、エディタ右端に各一致箇所の行位置目盛り(`.editor-search-tick`)と縦スライダー(`.editor-search-range`)を備える`.editor-search-slider`を実装。
+5. **フォルダ単位・アプリ全体のJSON／テキスト形式インポート・エクスポート＋デフォルト出力先フォルダ設定 (`backup.ts`, `Settings.tsx`, `App.tsx`, `App.css`):**
+   - 設定画面に「デフォルトの出力先フォルダ」設定(`localStorage`の`somnote.defaultExportFolder`)と「対象範囲（アプリ全体／個別フォルダ）」選択を追加。
+   - NotebookLMでの分析やスマホ単体でのコピペ用途に向け、メモの区切り線(`===...===`)と作成日時・更新日時・フォルダ・タグを明記したテキスト形式出力(`formatNotesAsText`、`.txt`ダウンロード、スマホ貼り付け用ワンタップコピー＆プレビュー欄)およびテキスト貼り付けインポート(`parseNotesFromText` / `importTextNotes`)を実装。
+   - **[重要・データ安全性]** フォルダ単位インポート(`importFolderBackupData` / `importTextNotes`)では、既存メモとのID衝突による静かな上書き消失を防止するため**必ず全件`crypto.randomUUID()`で新規IDを採番**し、かつGitHub同期(`planSync`)で不要なコンフリクトが発生しないよう**`baseSha: null, dirty: true, pendingOldPath: null`に強制正規化**して追加する設計とした。
+
+全33テストファイル・312テスト通過、およびプロダクションビルド(`npm run build`)成功を確認。

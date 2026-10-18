@@ -72,4 +72,54 @@ describe('Settings', () => {
     fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('saves default export folder and exports selected folder in JSON or text format', async () => {
+    localStorage.clear()
+    const folders = [
+      { folderId: 'f1', name: '仕事', color: '#f00', seq: 0 },
+      { folderId: 'f2', name: '趣味', color: '#0f0', seq: 1 },
+    ]
+    const createBackupSpy = vi.spyOn(backupLib, 'createBackupData').mockResolvedValue({
+      version: 1,
+      exportedAt: '2026-10-18T12:00:00Z',
+      folders: [folders[0]],
+      notes: [],
+    })
+    const downloadTextSpy = vi.spyOn(backupLib, 'downloadTextFile').mockImplementation(() => {})
+
+    render(<Settings initial={null} onSave={vi.fn()} folders={folders} />)
+
+    const defaultSelect = screen.getByLabelText('デフォルトの出力先フォルダ')
+    fireEvent.change(defaultSelect, { target: { value: '仕事' } })
+    expect(backupLib.getDefaultExportFolder()).toBe('仕事')
+
+    fireEvent.click(screen.getByRole('button', { name: 'テキスト形式で書き出す (.txt)' }))
+
+    await waitFor(() => {
+      expect(createBackupSpy).toHaveBeenCalledWith('仕事')
+      expect(downloadTextSpy).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/フォルダ「仕事」をテキスト形式で書き出しました/)).toBeInTheDocument()
+    })
+  })
+
+  it('imports pasted text notes into the selected folder', async () => {
+    localStorage.clear()
+    const folders = [{ folderId: 'f1', name: '仕事', color: '#f00', seq: 0 }]
+    const importTextSpy = vi.spyOn(backupLib, 'importTextNotes').mockResolvedValue({ noteCount: 2 })
+    const onBackupRestored = vi.fn()
+
+    render(<Settings initial={null} onSave={vi.fn()} folders={folders} onBackupRestored={onBackupRestored} />)
+
+    fireEvent.change(screen.getByLabelText('対象範囲'), { target: { value: '仕事' } })
+    fireEvent.change(screen.getByLabelText('インポートするテキストまたはJSON'), {
+      target: { value: '貼り付けメモ本文' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '貼り付けた内容を取り込む' }))
+
+    await waitFor(() => {
+      expect(importTextSpy).toHaveBeenCalledWith('貼り付けメモ本文', '仕事')
+      expect(onBackupRestored).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/フォルダ「仕事」にメモ2件を追加しました/)).toBeInTheDocument()
+    })
+  })
 })

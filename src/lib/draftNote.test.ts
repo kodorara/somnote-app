@@ -1,5 +1,59 @@
 import { describe, it, expect } from 'vitest'
-import { createDraftNote, shouldDiscardDraft, deriveTitle } from './draftNote'
+import {
+  createDraftNote,
+  shouldDiscardDraft,
+  deriveTitle,
+  findFolderTemplate,
+  extractTemplateBody,
+} from './draftNote'
+import type { StoredNote } from './db'
+
+function makeStoredNote(overrides: Partial<StoredNote> = {}): StoredNote {
+  return {
+    id: overrides.id ?? 'note-1',
+    title: overrides.title ?? '',
+    folder: overrides.folder ?? '仕事',
+    seq: overrides.seq ?? 1,
+    tags: overrides.tags ?? [],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    deleted: overrides.deleted ?? false,
+    llmLinks: [],
+    body: overrides.body ?? '',
+    baseSha: null,
+    dirty: false,
+  }
+}
+
+describe('findFolderTemplate & extractTemplateBody', () => {
+  it('picks the first non-deleted note (lowest seq) whose first line is テンプレート', () => {
+    const notes: StoredNote[] = [
+      makeStoredNote({ id: 'n1', seq: 3, body: 'テンプレート\n2番目のテンプレ' }),
+      makeStoredNote({ id: 'n2', seq: 1, body: 'テンプレート\n1番目のテンプレ\n#定例' }),
+      makeStoredNote({ id: 'n3', seq: 0, deleted: true, body: 'テンプレート\n削除済みテンプレ' }),
+      makeStoredNote({ id: 'n4', seq: 2, body: '普通のメモ\nテンプレート' }),
+    ]
+    const found = findFolderTemplate(notes)
+    expect(found?.id).toBe('n2')
+    expect(extractTemplateBody(found!)).toBe('1番目のテンプレ\n#定例')
+  })
+
+  it('supports markdown heading prefix on first line (# テンプレート)', () => {
+    const notes: StoredNote[] = [
+      makeStoredNote({ id: 'n1', seq: 1, body: '# テンプレート\n\n## 日報\n- 実施内容:' }),
+    ]
+    const found = findFolderTemplate(notes)
+    expect(found?.id).toBe('n1')
+    expect(extractTemplateBody(found!)).toBe('## 日報\n- 実施内容:')
+  })
+
+  it('returns null when no template note exists', () => {
+    const notes: StoredNote[] = [
+      makeStoredNote({ id: 'n1', seq: 1, body: '通常のメモ' }),
+    ]
+    expect(findFolderTemplate(notes)).toBeNull()
+  })
+})
 
 describe('createDraftNote', () => {
   it('creates an empty note in the given folder with a fresh id', () => {
@@ -9,6 +63,13 @@ describe('createDraftNote', () => {
     expect(note.dirty).toBe(false)
     expect(note.seq).toBe(8)
     expect(note.id).toBeTruthy()
+  })
+
+  it('initializes body and tags when templateBody is provided', () => {
+    const note = createDraftNote('仕事', 3, '定例メモ\n#会議')
+    expect(note.body).toBe('定例メモ\n#会議')
+    expect(note.tags).toEqual(['会議'])
+    expect(note.dirty).toBe(false)
   })
 })
 
@@ -23,6 +84,11 @@ describe('shouldDiscardDraft', () => {
 
   it('returns false once there is any real content', () => {
     expect(shouldDiscardDraft('a')).toBe(false)
+  })
+
+  it('returns true when body matches initialTemplateBody (unedited template draft)', () => {
+    expect(shouldDiscardDraft('## 日報\n- 項目', '## 日報\n- 項目')).toBe(true)
+    expect(shouldDiscardDraft('## 日報\n- 項目\n追記あり', '## 日報\n- 項目')).toBe(false)
   })
 })
 

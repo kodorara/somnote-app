@@ -1,10 +1,18 @@
 import { useRef, useState } from 'react'
 import type { GithubSettings } from '../lib/githubSettings'
+import type { StoredFolder } from '../lib/db'
+import { sortedBySeq } from '../lib/folders'
 import {
   createBackupData,
   validateBackupData,
   importBackupData,
+  importFolderBackupData,
+  formatNotesAsText,
+  importTextNotes,
   downloadBackupJson,
+  downloadTextFile,
+  getDefaultExportFolder,
+  saveDefaultExportFolder,
 } from '../lib/backup'
 import { CloseIcon, GearIcon } from './icons'
 
@@ -13,25 +21,84 @@ export interface SettingsProps {
   onSave: (settings: GithubSettings) => void
   onClose?: () => void
   onBackupRestored?: () => void
+  folders?: StoredFolder[]
 }
 
-export function Settings({ initial, onSave, onClose, onBackupRestored }: SettingsProps) {
+export function Settings({ initial, onSave, onClose, onBackupRestored, folders = [] }: SettingsProps) {
   const [token, setToken] = useState(initial?.token ?? '')
   const [owner, setOwner] = useState(initial?.owner ?? '')
   const [repo, setRepo] = useState(initial?.repo ?? 'somnote-data')
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
+
+  const initialDefaultFolder = getDefaultExportFolder()
+  const [defaultFolder, setDefaultFolder] = useState<string>(initialDefaultFolder)
+  const [targetScope, setTargetScope] = useState<string>(initialDefaultFolder)
+  const [pasteInput, setPasteInput] = useState<string>('')
+  const [exportedTextPreview, setExportedTextPreview] = useState<string | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const sortedFolders = sortedBySeq(folders)
+
+  const handleDefaultFolderChange = (folderName: string) => {
+    setDefaultFolder(folderName)
+    saveDefaultExportFolder(folderName)
+    setTargetScope(folderName)
+  }
 
   const handleExport = async () => {
     setBackupMessage(null)
     setBackupError(null)
     try {
-      const data = await createBackupData()
+      const scope = targetScope || undefined
+      const data = await createBackupData(scope)
       downloadBackupJson(data)
-      setBackupMessage(`バックアップを書き出しました（メモ${data.notes.length}件、フォルダ${data.folders.length}件）`)
+      if (scope) {
+        setBackupMessage(`フォルダ「${scope}」を書き出しました（メモ${data.notes.length}件）`)
+      } else {
+        setBackupMessage(`バックアップを書き出しました（メモ${data.notes.length}件、フォルダ${data.folders.length}件）`)
+      }
     } catch (err) {
       setBackupError(`書き出しエラー: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const handleExportText = async () => {
+    setBackupMessage(null)
+    setBackupError(null)
+    try {
+      const scope = targetScope || undefined
+      const data = await createBackupData(scope)
+      const text = formatNotesAsText(data.notes)
+      downloadTextFile(text)
+      setBackupMessage(
+        scope
+          ? `フォルダ「${scope}」をテキスト形式で書き出しました（メモ${data.notes.length}件）`
+          : `全メモをテキスト形式で書き出しました（メモ${data.notes.filter((n) => !n.deleted).length}件）`,
+      )
+    } catch (err) {
+      setBackupError(`テキスト書き出しエラー: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const handleCopyText = async () => {
+    setBackupMessage(null)
+    setBackupError(null)
+    try {
+      const scope = targetScope || undefined
+      const data = await createBackupData(scope)
+      const text = formatNotesAsText(data.notes)
+      setExportedTextPreview(text)
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          // クリップボード権限がない環境でも下のテキスト欄から手動コピー可能
+        }
+      }
+      setBackupMessage(`テキストをコピーしました（メモ${data.notes.filter((n) => !n.deleted).length}件）`)
+    } catch (err) {
+      setBackupError(`コピーエラー: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -43,6 +110,31 @@ export function Settings({ initial, onSave, onClose, onBackupRestored }: Setting
 
     try {
       const text = await file.text()
+      const isTextFile = file.name.toLowerCase().endsWith('.txt')
+
+      if (targetScope) {
+        if (isTextFile) {
+          const result = await importTextNotes(text, targetScope)
+          setBackupMessage(`フォルダ「${targetScope}」にテキストからメモ${result.noteCount}件を追加しました`)
+          onBackupRestored?.()
+          return
+        }
+        const json = JSON.parse(text)
+        const validData = validateBackupData(json)
+        const result = await importFolderBackupData(validData, targetScope)
+        setBackupMessage(`フォルダ「${targetScope}」にメモ${result.noteCount}件を追加しました`)
+        onBackupRestored?.()
+        return
+      }
+
+      if (isTextFile) {
+        const fallbackFolder = defaultFolder || sortedFolders[0]?.name || 'インポート'
+        const result = await importTextNotes(text, fallbackFolder)
+        setBackupMessage(`フォルダ「${fallbackFolder}」にテキストからメモ${result.noteCount}件を追加しました`)
+        onBackupRestored?.()
+        return
+      }
+
       const json = JSON.parse(text)
       const validData = validateBackupData(json)
 
@@ -60,6 +152,32 @@ export function Settings({ initial, onSave, onClose, onBackupRestored }: Setting
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  const handlePasteImport = async () => {
+    setBackupMessage(null)
+    setBackupError(null)
+    const trimmed = pasteInput.trim()
+    if (!trimmed) {
+      setBackupError('貼り付けるテキストまたはJSONを入力してください')
+      return
+    }
+    const targetFolder = targetScope || defaultFolder || sortedFolders[0]?.name || 'インポート'
+    try {
+      if (trimmed.startsWith('{')) {
+        const json = JSON.parse(trimmed)
+        const validData = validateBackupData(json)
+        const result = await importFolderBackupData(validData, targetFolder)
+        setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
+      } else {
+        const result = await importTextNotes(trimmed, targetFolder)
+        setBackupMessage(`フォルダ「${targetFolder}」にメモ${result.noteCount}件を追加しました`)
+      }
+      setPasteInput('')
+      onBackupRestored?.()
+    } catch (err) {
+      setBackupError(`貼り付け取り込みエラー: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -116,10 +234,46 @@ export function Settings({ initial, onSave, onClose, onBackupRestored }: Setting
       </div>
 
       <div className="settings-section settings-backup-section">
-        <h3>データバックアップ</h3>
+        <h3>データバックアップ / インポート・エクスポート</h3>
         <p className="settings-section-desc">
-          端末内の全メモとフォルダを1つのJSONファイルとして保存・復元できます。
+          アプリ全体またはフォルダ単位で、JSON形式・テキスト形式（日付と区切り線付き）の書き出し・読み込みができます。
         </p>
+
+        <div className="settings-field-row">
+          <label htmlFor="default-export-folder">デフォルトの出力先フォルダ</label>
+          <select
+            id="default-export-folder"
+            aria-label="デフォルトの出力先フォルダ"
+            className="input settings-select"
+            value={defaultFolder}
+            onChange={(e) => handleDefaultFolderChange(e.target.value)}
+          >
+            <option value="">指定なし（アプリ全体）</option>
+            {sortedFolders.map((f) => (
+              <option key={f.folderId} value={f.name}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="settings-field-row">
+          <label htmlFor="export-target-scope">対象範囲（フォルダ選択）</label>
+          <select
+            id="export-target-scope"
+            aria-label="対象範囲"
+            className="input settings-select"
+            value={targetScope}
+            onChange={(e) => setTargetScope(e.target.value)}
+          >
+            <option value="">アプリ全体（全フォルダ）</option>
+            {sortedFolders.map((f) => (
+              <option key={f.folderId} value={f.name}>
+                フォルダ: {f.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {backupMessage && <div className="settings-backup-success">{backupMessage}</div>}
         {backupError && <div className="settings-backup-error">{backupError}</div>}
@@ -136,6 +290,22 @@ export function Settings({ initial, onSave, onClose, onBackupRestored }: Setting
           <button
             type="button"
             className="btn"
+            onClick={handleExportText}
+          >
+            テキスト形式で書き出す (.txt)
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            onClick={handleCopyText}
+          >
+            テキストをコピー（スマホ貼り付け用）
+          </button>
+
+          <button
+            type="button"
+            className="btn"
             onClick={() => fileInputRef.current?.click()}
           >
             バックアップを読み込む (JSON)
@@ -143,11 +313,45 @@ export function Settings({ initial, onSave, onClose, onBackupRestored }: Setting
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.txt,application/json,text/plain"
             style={{ display: 'none' }}
             aria-label="バックアップファイルを選択"
             onChange={handleFileChange}
           />
+        </div>
+
+        {exportedTextPreview !== null && (
+          <div className="settings-text-box-wrap">
+            <label htmlFor="exported-text-preview">書き出しテキスト（コピー用）</label>
+            <textarea
+              id="exported-text-preview"
+              aria-label="書き出しテキスト"
+              className="input settings-paste-textarea"
+              readOnly
+              value={exportedTextPreview}
+              rows={5}
+            />
+          </div>
+        )}
+
+        <div className="settings-text-box-wrap">
+          <label htmlFor="paste-import-input">スマホ貼り付けインポート（テキスト / JSON）</label>
+          <textarea
+            id="paste-import-input"
+            aria-label="インポートするテキストまたはJSON"
+            className="input settings-paste-textarea"
+            placeholder="区切り線付きテキスト、またはJSONをここに貼り付けて取り込めます..."
+            value={pasteInput}
+            onChange={(e) => setPasteInput(e.target.value)}
+            rows={4}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handlePasteImport}
+          >
+            貼り付けた内容を取り込む
+          </button>
         </div>
       </div>
     </div>
