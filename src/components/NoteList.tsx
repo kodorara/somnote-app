@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { StoredFolder } from '../lib/db'
 import { sortedBySeq } from '../lib/folders'
 import type { GestureLockRef } from '../lib/gestureLock'
@@ -68,11 +68,18 @@ export function NoteList({
   onBulkPermanentDelete,
   gestureLockRef,
 }: Props) {
-  const visible = isTrash ? notes.filter((n) => n.deleted) : notes.filter((n) => !n.deleted)
-  const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
-  const word = wordFilter.trim().toLowerCase()
-  const wordFiltered = word ? tagFiltered.filter((n) => n.title.toLowerCase().includes(word)) : tagFiltered
-  const sorted = [...wordFiltered].sort(SORTERS[sortBy])
+  // notes配列自体はApp.tsx側で無関係な状態変化(文字入力ごとのactiveNote更新等)でも
+  // 新しい参照になり得るが、エディタでの入力中はこのフォルダのnotes/isTrash/
+  // tagFilter/wordFilter/sortByは変化しないため、useMemoにより再計算(フィルタ・
+  // 並び替え)自体はスキップできる(配列内容が実質同じでも参照が変わる場合は
+  // 再計算されるが、それでも無駄な再計算の多くを防げる)。
+  const sorted = useMemo(() => {
+    const visible = isTrash ? notes.filter((n) => n.deleted) : notes.filter((n) => !n.deleted)
+    const tagFiltered = tagFilter ? visible.filter((n) => n.tags.includes(tagFilter)) : visible
+    const word = wordFilter.trim().toLowerCase()
+    const wordFiltered = word ? tagFiltered.filter((n) => n.title.toLowerCase().includes(word)) : tagFiltered
+    return [...wordFiltered].sort(SORTERS[sortBy])
+  }, [notes, isTrash, tagFilter, wordFilter, sortBy])
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const multiSelectMode = selectedIds.size > 0

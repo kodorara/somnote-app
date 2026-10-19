@@ -99,10 +99,37 @@ export async function fullSync(
     })
   }
 
-  // 衝突が発生したノートは更新せず(ローカルの内容を保持)、それ以外だけ保存する
+  // 衝突が発生したノートは更新せず(ローカルの内容を保持)、それ以外だけ保存する。
+  // updatedはローカルの全件(runSync内でseq再計算のため全件clone+再構築される)だが、
+  // 実際に値が変わったノートだけをbulkPutする。push/pull対象のIDだけに絞る方式は
+  // 一見正しそうだが、以下を見逃すため採用しない:
+  // ・toDelete(旧パス削除)対象のpendingOldPathクリアはtoPush/toPullのどちらにも
+  //   含まれないIDで発生する
+  // ・フォルダ内seqの再計算は、そのフォルダで何か1件でもpush/pull/削除があれば
+  //   同フォルダの無関係な他ノートのseqも変わりうる
+  // そのため実際の値比較で判定する。
   const conflictIdSet = new Set(conflictIds)
-  const toPersist = updated.filter((n) => !conflictIdSet.has(n.id))
-  await db.notes.bulkPut(toPersist)
+  const localById = new Map(localNotes.map((n) => [n.id, n]))
+  const hasRelevantChange = (before: StoredNote, after: StoredNote): boolean =>
+    before.seq !== after.seq ||
+    before.baseSha !== after.baseSha ||
+    before.dirty !== after.dirty ||
+    before.title !== after.title ||
+    before.folder !== after.folder ||
+    before.updatedAt !== after.updatedAt ||
+    before.deleted !== after.deleted ||
+    before.body !== after.body ||
+    before.tags !== after.tags ||
+    before.llmLinks !== after.llmLinks ||
+    before.pendingPermanentDelete !== after.pendingPermanentDelete ||
+    (before.pendingOldPath?.sha ?? null) !== (after.pendingOldPath?.sha ?? null) ||
+    (before.pendingOldPath?.folder ?? null) !== (after.pendingOldPath?.folder ?? null)
+  const toPersist = updated.filter((n) => {
+    if (conflictIdSet.has(n.id)) return false
+    const before = localById.get(n.id)
+    return !before || hasRelevantChange(before, n)
+  })
+  if (toPersist.length > 0) await db.notes.bulkPut(toPersist)
 
   // 検索索引の差分更新に使うため、「実際にpush/pullされたノート」だけを返す。
   // updated自体はローカルの全件(未変化のものも含む)なので、plan.toPush/toPullの

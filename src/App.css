@@ -254,6 +254,13 @@
   margin: 0;
   padding: var(--space-2) 0;
 }
+.note-list li {
+  /* 件数の多いフォルダでは画面外の行のレイアウト・描画をブラウザにスキップさせる。
+     contain-intrinsic-sizeは実際の行の高さに近い値(スクロールバーの挙動がズレない
+     程度)を仮の高さとして与える。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
 .note-list li button {
   display: flex;
   align-items: center;

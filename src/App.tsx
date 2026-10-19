@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { db, type StoredNote, type StoredFolder } from './lib/db'
 import {
   createDraftNote,
@@ -20,15 +20,21 @@ import { NoteList, type SortBy } from './components/NoteList'
 import { NoteListControls } from './components/NoteListControls'
 import { Editor } from './components/Editor'
 import { SearchBar } from './components/SearchBar'
-import { LlmLinkPanel } from './components/LlmLinkPanel'
-import { HistoryPanel } from './components/HistoryPanel'
 import { EditorActionBar } from './components/EditorActionBar'
 
 import { SwipeContainer } from './components/SwipeContainer'
 import { PullToRefresh } from './components/PullToRefresh'
-import { ConflictResolver } from './components/ConflictResolver'
-import { Settings } from './components/Settings'
 import { AppLock } from './components/AppLock'
+
+// 設定画面(インポート/エクスポート処理含む)・編集履歴・LLMリンク・衝突解決パネルは
+// ボタン操作等があった時しか使わないため、起動時のメインJSに含めず遅延読み込みにする
+// (react-markdownと同じ方式。Editor.tsx参照)。
+const LlmLinkPanel = lazy(() => import('./components/LlmLinkPanel').then((m) => ({ default: m.LlmLinkPanel })))
+const HistoryPanel = lazy(() => import('./components/HistoryPanel').then((m) => ({ default: m.HistoryPanel })))
+const ConflictResolver = lazy(() =>
+  import('./components/ConflictResolver').then((m) => ({ default: m.ConflictResolver })),
+)
+const Settings = lazy(() => import('./components/Settings').then((m) => ({ default: m.Settings })))
 import { checkPassword, isUnlocked, setUnlocked } from './lib/appLock'
 import { writeEmergencySave, readEmergencySave, clearEmergencySave } from './lib/emergencySave'
 import type { GestureAxis } from './lib/gestureLock'
@@ -75,6 +81,20 @@ export default function App() {
   const syncInFlightRef = useRef(false)
   const searchIndexRef = useRef<SearchIndex | null>(null)
   const gestureLockRef = useRef<GestureAxis>('none')
+
+  // 同期の進捗(done/total)はバッチ(12件)ごとに届くため、件数が多いと短時間に
+  // 何十回もsetSyncProgressが発火し、その都度App全体が再レンダリングされて
+  // スワイプ操作や起動直後の操作感が重くなる。表示上は数値が多少飛んでも
+  // 問題ないため、最後の1件(done===total)を除き200ms以上空けてからのみ
+  // 実際にstateを更新する。
+  const lastSyncProgressAtRef = useRef(0)
+  const updateSyncProgress = (done: number, total: number) => {
+    const now = Date.now()
+    if (done >= total || now - lastSyncProgressAtRef.current >= 200) {
+      lastSyncProgressAtRef.current = now
+      setSyncProgress({ done, total })
+    }
+  }
 
   // ゴミ箱件数・フォルダごとの件数・アプリ全体の既存タグ一覧を1回のtoArray()スキャンでまとめて計算する
   const loadCounts = async () => {
@@ -285,7 +305,7 @@ export default function App() {
         let syncResult: Awaited<ReturnType<typeof fullSync>> | null = null
         if (navigator.onLine) {
           try {
-            syncResult = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+            syncResult = await fullSync(settings, githubClient, updateSyncProgress)
             setConflicts(syncResult.conflicts)
             setSyncError(null)
           } catch (err) {
@@ -368,13 +388,26 @@ export default function App() {
       lastOpenedNoteIdRef.current = withTitle.id
     }
     updateSearchIndexForNote(withTitle)
+    const existedBefore = notes.some((n) => n.id === withTitle.id)
     setNotes((prev) => {
       const exists = prev.some((n) => n.id === withTitle.id)
       return exists ? prev.map((n) => (n.id === withTitle.id ? withTitle : n)) : [...prev, withTitle]
     })
     if (activeNote?.id === withTitle.id) setActiveNote(withTitle)
     await refreshPendingCount()
-    void loadCounts()
+    // 既存メモの上書き保存(編集・自動保存)では、フォルダ件数・ゴミ箱件数は変わらない
+    // ため、全件(本文含む)を読み出すloadCounts()は不要。新しいタグが増えた場合だけ
+    // メモリ上で追記する(タグが0件になった場合の掃除は、次に新規作成・移動・削除等で
+    // loadCounts()が走るまで持ち越される=タグ候補が一瞬余分に残るだけの軽微な副作用)。
+    // 新規メモの初回保存時はフォルダ件数が変わるため、通常通り全件スキャンする。
+    if (existedBefore) {
+      const newTags = withTitle.tags.filter((t) => !allTags.includes(t))
+      if (newTags.length > 0) {
+        setAllTags((prev) => Array.from(new Set([...prev, ...newTags])).sort())
+      }
+    } else {
+      void loadCounts()
+    }
   }
 
   const saveActiveNote = async () => {
@@ -818,7 +851,7 @@ export default function App() {
     syncInFlightRef.current = true
     let result: Awaited<ReturnType<typeof fullSync>> | null = null
     try {
-      result = await fullSync(settings, githubClient, (done, total) => setSyncProgress({ done, total }))
+      result = await fullSync(settings, githubClient, updateSyncProgress)
       setConflicts(result.conflicts)
       setSyncError(null)
     } catch (err) {
@@ -867,14 +900,16 @@ export default function App() {
 
   if (!settings) {
     return (
-      <Settings
-        initial={null}
-        onSave={(s) => {
-          saveGithubSettings(s)
-          setSettings(s)
-        }}
-        onBackupRestored={handleBackupRestored}
-      />
+      <Suspense fallback={null}>
+        <Settings
+          initial={null}
+          onSave={(s) => {
+            saveGithubSettings(s)
+            setSettings(s)
+          }}
+          onBackupRestored={handleBackupRestored}
+        />
+      </Suspense>
     )
   }
 
@@ -894,11 +929,13 @@ export default function App() {
         )}
         {syncError && <p className="sync-error">同期エラー: {syncError}(ここまでの分は保存済みです)</p>}
         {conflicts.length > 0 && (
-          <ConflictResolver
-            localBody={conflicts[0].localBody}
-            remoteBody={conflicts[0].remoteBody}
-            onResolve={(choice) => resolveConflict(conflicts[0], choice)}
-          />
+          <Suspense fallback={null}>
+            <ConflictResolver
+              localBody={conflicts[0].localBody}
+              remoteBody={conflicts[0].remoteBody}
+              onResolve={(choice) => resolveConflict(conflicts[0], choice)}
+            />
+          </Suspense>
         )}
         <SwipeContainer
           className={`columns mobile-${mobileScreen}`}
@@ -1052,30 +1089,32 @@ export default function App() {
                   onModeChange={setEditorPreviewMode}
                   hideToolbar
                 />
-                <LlmLinkPanel
-                  body={activeNote.body}
-                  links={activeNote.llmLinks}
-                  isOpen={isLlmOpen}
-                  onClose={() => setIsLlmOpen(false)}
-                  onAddLink={(url, memo) => {
-                    setActiveNote({
-                      ...activeNote,
-                      llmLinks: [...activeNote.llmLinks, { url, label: memo, addedAt: new Date().toISOString() }],
-                      dirty: true,
-                    })
-                  }}
-                />
-                <HistoryPanel
-                  isOpen={isHistoryOpen}
-                  onClose={() => setIsHistoryOpen(false)}
-                  folder={activeNote.folder}
-                  noteId={activeNote.id}
-                  settings={settings}
-                  online={online}
-                  onRestoreContent={(restoredBody) => {
-                    updateBody(restoredBody)
-                  }}
-                />
+                <Suspense fallback={null}>
+                  <LlmLinkPanel
+                    body={activeNote.body}
+                    links={activeNote.llmLinks}
+                    isOpen={isLlmOpen}
+                    onClose={() => setIsLlmOpen(false)}
+                    onAddLink={(url, memo) => {
+                      setActiveNote({
+                        ...activeNote,
+                        llmLinks: [...activeNote.llmLinks, { url, label: memo, addedAt: new Date().toISOString() }],
+                        dirty: true,
+                      })
+                    }}
+                  />
+                  <HistoryPanel
+                    isOpen={isHistoryOpen}
+                    onClose={() => setIsHistoryOpen(false)}
+                    folder={activeNote.folder}
+                    noteId={activeNote.id}
+                    settings={settings}
+                    online={online}
+                    onRestoreContent={(restoredBody) => {
+                      updateBody(restoredBody)
+                    }}
+                  />
+                </Suspense>
               </>
 
             )}
@@ -1097,17 +1136,19 @@ export default function App() {
         </SwipeContainer>
       </PullToRefresh>
       {isSettingsOpen && (
-        <Settings
-          initial={settings}
-          folders={folders}
-          onSave={(s) => {
-            saveGithubSettings(s)
-            setSettings(s)
-            setIsSettingsOpen(false)
-          }}
-          onClose={() => setIsSettingsOpen(false)}
-          onBackupRestored={handleBackupRestored}
-        />
+        <Suspense fallback={null}>
+          <Settings
+            initial={settings}
+            folders={folders}
+            onSave={(s) => {
+              saveGithubSettings(s)
+              setSettings(s)
+              setIsSettingsOpen(false)
+            }}
+            onClose={() => setIsSettingsOpen(false)}
+            onBackupRestored={handleBackupRestored}
+          />
+        </Suspense>
       )}
     </div>
   )
