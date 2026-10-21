@@ -562,21 +562,23 @@ export default function App() {
     }
   }
 
-  // handleSwipeLeftは毎レンダリングで再生成されるため、popstateのuseEffect(マウント時に
+  // handleSwipeRightは毎レンダリングで再生成されるため、popstateのuseEffect(マウント時に
   // 1回だけ登録)がそのまま参照すると古いmobileScreen/activeNoteを捉えたクロージャに
-  // なってしまう。refを常に最新のhandleSwipeLeftへ同期させ、イベントハンドラはref経由で呼ぶ。
-  const handleSwipeLeftRef = useRef(handleSwipeLeft)
-  handleSwipeLeftRef.current = handleSwipeLeft
+  // なってしまう。refを常に最新のhandleSwipeRightへ同期させ、イベントハンドラはref経由で呼ぶ。
+  const handleSwipeRightRef = useRef(handleSwipeRight)
+  handleSwipeRightRef.current = handleSwipeRight
 
   // Androidの戻るボタン(ジェスチャー含む)は、履歴が無いと即座にアプリを閉じてしまう
   // (押しミスのたびにアプリが落ちてストレスになる)。履歴に常にダミーのエントリを
   // 積んでおき、戻るボタンで消費されたら即座に積み直すことで、アプリが閉じる前に
-  // popstateとして横取りし、スワイプ左と同じ画面遷移に差し替える。
+  // popstateとして横取りし、スワイプ右(戻る方向: editor→notes→folders)と同じ画面遷移に
+  // 差し替える。folders画面まで戻った後はhandleSwipeRight自身がcanSwipeRightNow=falseで
+  // 何もしない(画面はfoldersのまま)が、履歴は積み直し済みなのでアプリは閉じない。
   useEffect(() => {
     window.history.pushState({ somnoteBackGuard: true }, '')
     const handlePopState = () => {
       window.history.pushState({ somnoteBackGuard: true }, '')
-      handleSwipeLeftRef.current()
+      handleSwipeRightRef.current()
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
