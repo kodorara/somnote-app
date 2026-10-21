@@ -42,6 +42,10 @@ import './App.css'
 
 type MobileScreen = 'folders' | 'notes' | 'editor'
 
+// 戻るボタン横取り用に一度にまとめて積むダミー履歴の件数。詳細はApp内の
+// popstateハンドラのコメントを参照。
+const BACK_GUARD_BUFFER = 20
+
 export default function App() {
   const [unlocked, setUnlockedState] = useState(isUnlocked())
   const [settings, setSettings] = useState<GithubSettings | null>(null)
@@ -569,15 +573,24 @@ export default function App() {
   handleSwipeRightRef.current = handleSwipeRight
 
   // Androidの戻るボタン(ジェスチャー含む)は、履歴が無いと即座にアプリを閉じてしまう
-  // (押しミスのたびにアプリが落ちてストレスになる)。履歴に常にダミーのエントリを
-  // 積んでおき、戻るボタンで消費されたら即座に積み直すことで、アプリが閉じる前に
-  // popstateとして横取りし、スワイプ右(戻る方向: editor→notes→folders)と同じ画面遷移に
-  // 差し替える。folders画面まで戻った後はhandleSwipeRight自身がcanSwipeRightNow=falseで
-  // 何もしない(画面はfoldersのまま)が、履歴は積み直し済みなのでアプリは閉じない。
+  // (押しミスのたびにアプリが落ちてストレスになる)。履歴にダミーのエントリを積んでおき、
+  // 戻るボタンで消費されたらpopstateとして横取りし、スワイプ右(戻る方向:
+  // editor→notes→folders)と同じ画面遷移に差し替える。folders画面まで戻った後は
+  // handleSwipeRight自身がcanSwipeRightNow=falseで何もしない(画面はfoldersのまま)。
+  //
+  // 積み直しを1件ずつにすると、実機(特にAndroidのジェスチャー/連打)ではpushStateが
+  // ネイティブ側の戻るスタックへ反映されるより先に次の戻る操作が処理され、ダミー
+  // エントリが枯渇してアプリが終了してしまう事例が確認された。十分な数(BACK_GUARD_BUFFER)
+  // をまとめて積み直すことで、多少の反映遅延や連打があっても枯渇しない余裕を持たせる。
   useEffect(() => {
-    window.history.pushState({ somnoteBackGuard: true }, '')
+    const refillBackGuard = () => {
+      for (let i = 0; i < BACK_GUARD_BUFFER; i++) {
+        window.history.pushState({ somnoteBackGuard: true }, '')
+      }
+    }
+    refillBackGuard()
     const handlePopState = () => {
-      window.history.pushState({ somnoteBackGuard: true }, '')
+      refillBackGuard()
       handleSwipeRightRef.current()
     }
     window.addEventListener('popstate', handlePopState)
